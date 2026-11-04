@@ -1,31 +1,28 @@
 /* ==========================================================================
    UniSchedule AI - Chat
-   Phòng chung, chat riêng 1-1, chat nhóm; tin nhắn realtime qua Firestore.
+   Phòng chung, chat riêng 1-1, chat nhóm; tin nhắn realtime qua Supabase.
+   Giữ nguyên bố cục DOM và tên hàm export để main.js không phải đổi.
    ========================================================================== */
 
-import { db, SDK_VERSION } from './firebase-init.js';
-import { isPublicRoomId, unreadCount, roomLabel, directRoomId, filterDirectory, sortMessagesAsc, legacyCacheAllowed } from './core.js';
-
-let fs = null;
-async function loadFs() {
-    if (!fs) {
-        fs = await import(`https://www.gstatic.com/firebasejs/${SDK_VERSION}/firebase-firestore.js`);
-    }
-    return fs;
-}
+import { client } from './supabase-init.js';
+import {
+    isPublicRoomId, unreadCount, roomLabel, directRoomId,
+    filterDirectory, sortMessagesAsc
+} from './core.js';
 
 let currentUser = null;
+let currentRoomId = null;
+let roomsCache = [];
+let directoryMap = {};      // uid -> { displayName }
+let directoryUsers = [];    // danh sách phẳng cho modal chọn người
+let lastReadMap = {};       // roomId -> mốc đọc (ms)
+let unreadByRoom = {};      // roomId -> số chưa đọc
+let unreadToken = 0;
+
+let roomListRefresh = null;
 let roomListUnsub = null;
 let messagesUnsub = null;
 let directoryUnsub = null;
-let currentRoomId = null;
-let roomsCache = [];
-let directoryMap = {};      // uid -> { displayName, class, photoURL } (Task 6 điền)
-let directoryUsers = [];    // danh sách phẳng cho modal chọn người
-let lastReadMap = {};       // roomId -> lastReadAt
-let unreadByRoom = {};      // roomId -> số chưa đọc
-let unreadMsgs = {};        // roomId -> bản tin gần nhất (để tính lại khi mốc đọc đổi)
-let unreadSubs = {};        // roomId -> unsubscribe
 let readsUnsub = null;
 
 function esc(s) {
@@ -43,102 +40,143 @@ function toMillis(v) {
 }
 
 function timeLabel(ts) {
-    var d = ts && typeof ts.toDate === 'function' ? ts.toDate() : (ts ? new Date(ts) : null);
+    var d = ts ? new Date(ts) : null;
     if (!d || isNaN(d.getTime())) return '';
     var hh = String(d.getHours()).padStart(2, '0');
     var mm = String(d.getMinutes()).padStart(2, '0');
     return hh + ':' + mm;
 }
 
-function unwrap(doc) {
-    return Object.assign({ id: doc.id }, doc.data());
+function ms(iso) {
+    var n = Date.parse(iso);
+    return isNaN(n) ? 0 : n;
+}
+
+function mapMessage(row) {
+    return {
+        id: row.id,
+        senderId: row.sender,
+        senderName: row.sender_name || '',
+        text: row.body,
+        createdAt: ms(row.created_at)
+    };
+}
+
+function removeChannel(ch) {
+    if (ch && client) { try { client.removeChannel(ch); } catch (e) { /* bỏ qua */ } }
+}
+
+// Lấy tối đa `limit` tin mới nhất của một phòng (đã ánh xạ sang dạng app).
+async function fetchRoomMessages(roomId, limit) {
+    if (!client) return [];
+    const { data, error } = await client
+        .from('messages')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+    if (error) { console.warn('fetchRoomMessages:', error); return []; }
+    return (data || []).map(mapMessage);
 }
 
 /* ------------------------- Phòng chung ------------------------- */
 
 export async function ensurePublicRoom() {
-    const S = await loadFs();
-    const ref = S.doc(db, 'rooms', 'public');
-    const snap = await S.getDoc(ref);
-    if (!snap.exists()) {
-        try {
-            await S.setDoc(ref, {
-                type: 'public',
-                name: null,
-                members: [],
-                ownerId: null,
-                createdAt: S.serverTimestamp(),
-                updatedAt: S.serverTimestamp(),
-                lastMessage: null
-            });
-        } catch (e) {
-            // Có thể người khác vừa tạo trước — bỏ qua.
-            console.warn('ensurePublicRoom:', e);
-        }
-    }
+    if (!client) return;
+    const { error } = await client
+        .from('rooms')
+        .upsert({ id: 'public', type: 'public', name: null, owner: null }, { onConflict: 'id', ignoreDuplicates: true });
+    // Có thể người khác vừa tạo trước — bỏ qua.
+    if (error) console.warn('ensurePublicRoom:', error);
 }
 
 /* ------------------------- Danh sách phòng ------------------------- */
 
+function mapRoom(row, membersMap) {
+    const members = membersMap[row.id] || [];
+    return {
+        id: row.id,
+        type: row.type,
+        name: row.name,
+        ownerId: row.owner,
+        members: members,
+        lastMessage: row.last_message_at ? {
+            text: row.last_message_text || '',
+            senderId: row.last_message_sender,
+            senderName: (directoryMap[row.last_message_sender] || {}).displayName || '',
+            createdAt: ms(row.last_message_at)
+        } : null
+    };
+}
+
 export function subscribeRoomList(cb) {
-    const S = fs;
-    const uid = currentUser && currentUser.uid;
-    if (!S || !uid) return function () { };
+    if (!client || !currentUser) return function () { };
+    const uid = currentUser.uid;
 
-    let publicRoom = null;
-    let myRooms = [];
+    async function refresh() {
+        const [pubRes, mineRes, membersRes] = await Promise.all([
+            client.from('rooms').select('*').eq('id', 'public').maybeSingle(),
+            client.from('room_members').select('rooms(*)').eq('user_id', uid),
+            client.from('room_members').select('room_id, user_id')
+        ]);
+        if (pubRes.error) console.warn('subscribeRoomList(public):', pubRes.error);
+        if (mineRes.error) console.warn('subscribeRoomList(mine):', mineRes.error);
+        if (membersRes.error) console.warn('subscribeRoomList(members):', membersRes.error);
 
-    function emit() {
+        const membersMap = {};
+        (membersRes.data || []).forEach(function (r) {
+            (membersMap[r.room_id] = membersMap[r.room_id] || []).push(r.user_id);
+        });
+
         const list = [];
-        if (publicRoom) list.push(publicRoom);
-        myRooms.forEach(function (r) { if (r.id !== 'public') list.push(r); });
+        if (pubRes.data) list.push(mapRoom(pubRes.data, membersMap));
+        (mineRes.data || []).forEach(function (r) {
+            const row = r.rooms;
+            if (row && row.id !== 'public') list.push(mapRoom(row, membersMap));
+        });
         list.sort(function (a, b) {
-            const ta = a.lastMessage ? toMillis(a.lastMessage.createdAt) : 0;
-            const tb = b.lastMessage ? toMillis(b.lastMessage.createdAt) : 0;
-            return tb - ta;
+            return (b.lastMessage ? b.lastMessage.createdAt : 0) - (a.lastMessage ? a.lastMessage.createdAt : 0);
         });
         roomsCache = list;
+        await recomputeUnread();
         renderRoomList(list);
         if (typeof cb === 'function') cb(list);
     }
 
-    const unsubPublic = S.onSnapshot(S.doc(db, 'rooms', 'public'), function (snap) {
-        publicRoom = snap.exists() ? unwrap(snap) : null;
-        emit();
-    }, function (err) { console.warn('subscribeRoomList(public):', err); });
+    const channel = client.channel('roomlist-' + uid)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, function () { refresh().catch(logErr); })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'room_members' }, function () { refresh().catch(logErr); })
+        .subscribe();
 
-    const unsubMine = S.onSnapshot(
-        S.query(S.collection(db, 'rooms'), S.where('members', 'array-contains', uid)),
-        function (snap) {
-            myRooms = snap.docs.map(unwrap);
-            emit();
-        },
-        function (err) { console.warn('subscribeRoomList(mine):', err); }
-    );
+    roomListRefresh = refresh;
+    refresh().catch(logErr);
 
-    roomListUnsub = function () { unsubPublic(); unsubMine(); };
+    roomListUnsub = function () { removeChannel(channel); roomListRefresh = null; };
     return roomListUnsub;
 }
+
+function logErr(e) { console.warn('chat:', e); }
 
 /* ------------------------- Tin nhắn ------------------------- */
 
 export function subscribeMessages(roomId, cb) {
-    const S = fs;
-    if (!S) return function () { };
-    const q = S.query(
-        S.collection(db, 'rooms', roomId, 'messages'),
-        S.orderBy('createdAt', 'desc'),
-        S.limit(50)
-    );
-    return S.onSnapshot(q, function (snap) {
-        const msgs = sortMessagesAsc(snap.docs.map(unwrap));
+    if (!client) return function () { };
+    async function refetch() {
+        const msgs = sortMessagesAsc(await fetchRoomMessages(roomId, 50));
         if (typeof cb === 'function') cb(msgs);
-    }, function (err) { console.warn('subscribeMessages:', err); });
+    }
+    const channel = client.channel('messages-' + roomId)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: 'room_id=eq.' + roomId },
+            function () { refetch().catch(logErr); })
+        .subscribe();
+    refetch().catch(logErr);
+    return function () { removeChannel(channel); };
 }
 
 export function openRoom(roomId) {
-    if (!fs || !currentUser || !roomId) return;
+    if (!client || !currentUser || !roomId) return;
     currentRoomId = roomId;
+    unreadByRoom[roomId] = 0;
     setChatTitle();
     renderRoomList(roomsCache);
 
@@ -151,148 +189,136 @@ export function openRoom(roomId) {
 
 export async function sendMessage(roomId, text) {
     text = String(text == null ? '' : text).trim();
-    if (!text || !fs || !currentUser) return;
-    const S = fs;
+    if (!text || !client || !currentUser) return;
     const senderName = currentUser.displayName || currentUser.email || 'Người dùng';
-    await S.addDoc(S.collection(db, 'rooms', roomId, 'messages'), {
-        senderId: currentUser.uid,
-        senderName: senderName,
-        text: text,
-        type: 'text',
-        createdAt: S.serverTimestamp()
+    const { error } = await client.from('messages').insert({
+        room_id: roomId,
+        sender: currentUser.uid,
+        sender_name: senderName,
+        body: text
     });
-    await S.updateDoc(S.doc(db, 'rooms', roomId), {
-        lastMessage: {
-            text: text,
-            senderId: currentUser.uid,
-            senderName: senderName,
-            createdAt: S.serverTimestamp()
-        },
-        updatedAt: S.serverTimestamp()
-    });
+    if (error) { console.warn('sendMessage:', error); return; }
+    const { error: updErr } = await client.from('rooms').update({
+        last_message_text: text,
+        last_message_sender: currentUser.uid,
+        last_message_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+    }).eq('id', roomId);
+    if (updErr) console.warn('sendMessage(room):', updErr);
+    if (roomListRefresh) roomListRefresh().catch(logErr);
 }
 
 export async function markRoomRead(roomId) {
-    if (!fs || !currentUser || !roomId) return;
-    const S = fs;
+    if (!client || !currentUser || !roomId) return;
     try {
-        await S.setDoc(
-            S.doc(db, 'users', currentUser.uid, 'reads', roomId),
-            { lastReadAt: S.serverTimestamp() },
-            { merge: true }
+        await client.from('reads').upsert(
+            { room_id: roomId, user_id: currentUser.uid, last_read_at: new Date().toISOString() },
+            { onConflict: 'room_id,user_id' }
         );
+        lastReadMap[roomId] = Date.now();
+        unreadByRoom[roomId] = 0;
+        renderRoomList(roomsCache);
     } catch (e) { /* bỏ qua, không chặn chat */ }
 }
 
 /* ------------------------- Chưa đọc ------------------------- */
 
-// Nghe mốc đã đọc của mọi phòng để tính số chưa đọc.
-function subscribeReads() {
-    const S = fs;
-    const uid = currentUser && currentUser.uid;
-    if (!S || !uid) return function () { };
-    return S.onSnapshot(S.collection(db, 'users', uid, 'reads'), function (snap) {
-        const map = {};
-        snap.docs.forEach(function (d) {
-            map[d.id] = d.data().lastReadAt || null;
-        });
-        lastReadMap = map;
-        Object.keys(unreadMsgs).forEach(function (rid) {
-            unreadByRoom[rid] = unreadCount(unreadMsgs[rid], lastReadMap[rid]);
-        });
-        renderRoomList(roomsCache);
-    }, function (err) { console.warn('subscribeReads:', err); });
+async function recomputeUnread() {
+    if (!client || !currentUser) return;
+    const token = ++unreadToken;
+    const results = {};
+    await Promise.all(roomsCache.map(async function (room) {
+        if (room.id === currentRoomId) { results[room.id] = 0; return; }
+        const msgs = await fetchRoomMessages(room.id, 50);
+        results[room.id] = unreadCount(msgs, lastReadMap[room.id] == null ? null : lastReadMap[room.id]);
+    }));
+    if (token !== unreadToken) return; // có lần tính mới hơn đang chạy
+    unreadByRoom = results;
 }
 
-// Đảm bảo mỗi phòng (trừ phòng đang mở) có một listener đếm tin chưa đọc.
-function syncUnreadSubs(list) {
-    const S = fs;
-    if (!S) return;
-    const wanted = {};
-    (list || []).forEach(function (r) {
-        if (r.id === currentRoomId) return;
-        wanted[r.id] = true;
-        if (unreadSubs[r.id]) return;
-        const q = S.query(
-            S.collection(db, 'rooms', r.id, 'messages'),
-            S.orderBy('createdAt', 'desc'),
-            S.limit(50)
-        );
-        unreadSubs[r.id] = S.onSnapshot(q, function (snap) {
-            const msgs = snap.docs.map(unwrap);
-            unreadMsgs[r.id] = msgs;
-            unreadByRoom[r.id] = unreadCount(msgs, lastReadMap[r.id]);
-            renderRoomList(roomsCache);
-        }, function (err) { console.warn('unread ' + r.id + ':', err); });
-    });
-    Object.keys(unreadSubs).forEach(function (rid) {
-        if (!wanted[rid]) {
-            unreadSubs[rid]();
-            delete unreadSubs[rid];
-            delete unreadByRoom[rid];
-            delete unreadMsgs[rid];
-        }
-    });
+// Nghe mốc đã đọc của chính mình để tính lại số chưa đọc.
+function subscribeReads() {
+    if (!client || !currentUser) return function () { };
+    const uid = currentUser.uid;
+
+    async function refetch() {
+        const { data, error } = await client.from('reads').select('room_id, last_read_at').eq('user_id', uid);
+        if (error) { console.warn('subscribeReads:', error); return; }
+        const map = {};
+        (data || []).forEach(function (r) {
+            map[r.room_id] = r.last_read_at ? ms(r.last_read_at) : null;
+        });
+        lastReadMap = map;
+        await recomputeUnread();
+        renderRoomList(roomsCache);
+    }
+
+    const channel = client.channel('reads-' + uid)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'reads', filter: 'user_id=eq.' + uid },
+            function () { refetch().catch(logErr); })
+        .subscribe();
+    refetch().catch(logErr);
+    return function () { removeChannel(channel); };
 }
 
 /* ------------------------- Danh bạ người dùng ------------------------- */
 
-// Công khai hồ sơ tối thiểu (KHÔNG email) để người khác chat riêng.
-export async function upsertDirectory(user, extra) {
-    if (!user || !user.uid) return;
-    const S = await loadFs();
-    const payload = {
-        displayName: user.displayName || 'Người dùng',
-        class: (extra && extra.class) || null,
-        photoURL: user.photoURL || null,
-        updatedAt: S.serverTimestamp()
-    };
-    await S.setDoc(S.doc(db, 'directory', user.uid), payload, { merge: true });
-}
+// Tương thích chữ ký cũ của main.js (phiên bản cũ). Hồ sơ công khai do
+// ensureUserProfile trong cloud-sync.js đảm nhiệm; giữ hàm rỗng để không vỡ import.
+export async function upsertDirectory() { /* no-op */ }
 
 export function listDirectory(cb) {
-    const S = fs;
-    if (!S) return function () { };
-    return S.onSnapshot(S.collection(db, 'directory'), function (snap) {
-        const users = snap.docs.map(function (d) {
-            return Object.assign({ uid: d.id }, d.data());
+    if (!client) return function () { };
+    async function refetch() {
+        const { data, error } = await client.from('profiles').select('id, username');
+        if (error) { console.warn('listDirectory:', error); return; }
+        const users = (data || []).map(function (p) {
+            return { uid: p.id, displayName: p.username };
         });
         const map = {};
         users.forEach(function (u) { map[u.uid] = u; });
         directoryMap = map;
         directoryUsers = users;
-        // Cập nhật lại nhãn phòng riêng đang hiển thị.
         renderRoomList(roomsCache);
         setChatTitle();
         if (typeof cb === 'function') cb(users);
-    }, function (err) { console.warn('listDirectory:', err); });
+    }
+    const channel = client.channel('profiles-directory')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' },
+            function () { refetch().catch(logErr); })
+        .subscribe();
+    refetch().catch(logErr);
+    return function () { removeChannel(channel); };
 }
 
 /* ------------------------- Chat riêng 1-1 ------------------------- */
 
 export async function openDirect(otherUid) {
-    if (!fs || !currentUser || !otherUid) return;
+    if (!client || !currentUser || !otherUid) return;
     if (otherUid === currentUser.uid) return;
-    const S = fs;
-    const roomId = directRoomId(currentUser.uid, otherUid);
-    const ref = S.doc(db, 'rooms', roomId);
-    const snap = await S.getDoc(ref);
-    if (!snap.exists()) {
-        try {
-            await S.setDoc(ref, {
-                type: 'direct',
-                name: null,
-                members: [currentUser.uid, otherUid],
-                ownerId: null,
-                createdAt: S.serverTimestamp(),
-                updatedAt: S.serverTimestamp(),
-                lastMessage: null
-            });
-        } catch (e) {
-            // Người kia có thể vừa tạo trước — bỏ qua.
-            console.warn('openDirect:', e);
-        }
+    const uid = currentUser.uid;
+    const roomId = directRoomId(uid, otherUid);
+
+    const { data: existing } = await client.from('rooms').select('id').eq('id', roomId).maybeSingle();
+    if (!existing) {
+        const { error: insErr } = await client.from('rooms').insert({
+            id: roomId, type: 'direct', name: null, owner: uid
+        });
+        if (insErr) console.warn('openDirect(room):', insErr);
+        // Chỉ người tạo (chủ phòng) thêm được cả hai thành viên.
+        const { error: memErr } = await client.from('room_members').upsert(
+            [{ room_id: roomId, user_id: uid }, { room_id: roomId, user_id: otherUid }],
+            { onConflict: 'room_id,user_id', ignoreDuplicates: true }
+        );
+        if (memErr) console.warn('openDirect(members):', memErr);
+    } else {
+        await client.from('room_members').upsert(
+            { room_id: roomId, user_id: uid },
+            { onConflict: 'room_id,user_id', ignoreDuplicates: true }
+        );
     }
+
+    if (roomListRefresh) await roomListRefresh().catch(logErr);
     openRoom(roomId);
 }
 
@@ -313,9 +339,7 @@ function renderPickUserList() {
     list.forEach(function (u) {
         const item = document.createElement('div');
         item.className = 'pick-user-item';
-        item.innerHTML =
-            '<div class="pick-user-name">' + esc(u.displayName || 'Người dùng') + '</div>' +
-            (u.class ? '<div class="pick-user-class">' + esc(u.class) + '</div>' : '');
+        item.innerHTML = '<div class="pick-user-name">' + esc(u.displayName || 'Người dùng') + '</div>';
         item.addEventListener('click', function () {
             if (typeof window.closeModal === 'function') window.closeModal('pickUserModal');
             openDirect(u.uid).catch(function (e) { console.warn('openDirect:', e); });
@@ -345,47 +369,52 @@ function wireChatUi() {
 /* ------------------------- Chat nhóm ------------------------- */
 
 export async function createGroup(name, memberUids) {
-    if (!fs || !currentUser) return null;
-    const S = fs;
+    if (!client || !currentUser) return null;
+    const uid = currentUser.uid;
     const cleanName = String(name || '').trim() || 'Nhóm';
-    const ids = Array.from(new Set([currentUser.uid].concat(memberUids || [])));
-    const ref = await S.addDoc(S.collection(db, 'rooms'), {
+    const ids = Array.from(new Set([uid].concat(memberUids || [])));
+
+    const { data, error } = await client.from('rooms').insert({
+        id: 'grp_' + uid.slice(0, 8) + '_' + Date.now().toString(36),
         type: 'group',
         name: cleanName,
-        members: ids,
-        ownerId: currentUser.uid,
-        createdAt: S.serverTimestamp(),
-        updatedAt: S.serverTimestamp(),
-        lastMessage: null
-    });
-    openRoom(ref.id);
-    return ref.id;
+        owner: uid
+    }).select('id').single();
+    if (error) { console.warn('createGroup:', error); return null; }
+
+    const rows = ids.map(function (m) { return { room_id: data.id, user_id: m }; });
+    const { error: memErr } = await client.from('room_members').upsert(rows, { onConflict: 'room_id,user_id', ignoreDuplicates: true });
+    if (memErr) console.warn('createGroup(members):', memErr);
+
+    if (roomListRefresh) await roomListRefresh().catch(logErr);
+    openRoom(data.id);
+    return data.id;
 }
 
 export async function renameGroup(roomId, name) {
-    if (!fs || !currentUser || !roomId) return;
+    if (!client || !currentUser || !roomId) return;
     const cleanName = String(name || '').trim();
     if (!cleanName) return;
-    const S = fs;
-    await S.updateDoc(S.doc(db, 'rooms', roomId), { name: cleanName, updatedAt: S.serverTimestamp() });
+    const { error } = await client.from('rooms').update({
+        name: cleanName, updated_at: new Date().toISOString()
+    }).eq('id', roomId);
+    if (error) console.warn('renameGroup:', error);
+    if (roomListRefresh) roomListRefresh().catch(logErr);
 }
 
 export async function addGroupMembers(roomId, uids) {
-    if (!fs || !currentUser || !roomId || !uids || !uids.length) return;
-    const S = fs;
-    await S.updateDoc(S.doc(db, 'rooms', roomId), {
-        members: S.arrayUnion.apply(null, uids),
-        updatedAt: S.serverTimestamp()
-    });
+    if (!client || !currentUser || !roomId || !uids || !uids.length) return;
+    const rows = uids.map(function (m) { return { room_id: roomId, user_id: m }; });
+    const { error } = await client.from('room_members').upsert(rows, { onConflict: 'room_id,user_id', ignoreDuplicates: true });
+    if (error) console.warn('addGroupMembers:', error);
+    if (roomListRefresh) roomListRefresh().catch(logErr);
 }
 
 export async function removeGroupMember(roomId, uid) {
-    if (!fs || !currentUser || !roomId || !uid) return;
-    const S = fs;
-    await S.updateDoc(S.doc(db, 'rooms', roomId), {
-        members: S.arrayRemove(uid),
-        updatedAt: S.serverTimestamp()
-    });
+    if (!client || !currentUser || !roomId || !uid) return;
+    const { error } = await client.from('room_members').delete().eq('room_id', roomId).eq('user_id', uid);
+    if (error) console.warn('removeGroupMember:', error);
+    if (roomListRefresh) roomListRefresh().catch(logErr);
 }
 
 export async function leaveGroup(roomId) {
@@ -414,8 +443,7 @@ function renderCreateGroupList() {
         row.className = 'group-pick-row';
         row.innerHTML =
             '<input type="checkbox" value="' + esc(u.uid) + '">' +
-            '<span class="pick-user-name">' + esc(u.displayName || 'Người dùng') + '</span>' +
-            (u.class ? '<span class="pick-user-class">' + esc(u.class) + '</span>' : '');
+            '<span class="pick-user-name">' + esc(u.displayName || 'Người dùng') + '</span>';
         el.appendChild(row);
     });
 }
@@ -576,13 +604,12 @@ function wireGroupUi() {
 
 export async function initChat(user) {
     if (!user) return;
-    // onAuthStateChanged có thể phát lại cho cùng người (refresh token) → không dựng lại listener.
+    // onAuthStateChange có thể phát lại cho cùng người → không dựng lại listener.
     if (currentUser) {
         if (currentUser.uid === user.uid) { currentUser = user; return; }
         teardownChat();
     }
     currentUser = user;
-    await loadFs();
     wireChatUi();
     wireGroupUi();
     await ensurePublicRoom();
@@ -597,10 +624,7 @@ export function teardownChat() {
     if (messagesUnsub) { messagesUnsub(); messagesUnsub = null; }
     if (directoryUnsub) { directoryUnsub(); directoryUnsub = null; }
     if (readsUnsub) { readsUnsub(); readsUnsub = null; }
-    Object.keys(unreadSubs).forEach(function (rid) { unreadSubs[rid](); });
-    unreadSubs = {};
     unreadByRoom = {};
-    unreadMsgs = {};
     lastReadMap = {};
     currentUser = null;
     currentRoomId = null;
@@ -641,7 +665,6 @@ function renderRoomList(list) {
         el.appendChild(item);
     });
     updateGroupInfoBtn();
-    syncUnreadSubs(list);
     const gi = document.getElementById('groupInfoModal');
     if (gi && !gi.classList.contains('hidden')) renderGroupInfo();
 }
