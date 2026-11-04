@@ -22,7 +22,11 @@ let currentRoomId = null;
 let roomsCache = [];
 let directoryMap = {};      // uid -> { displayName, class, photoURL } (Task 6 điền)
 let directoryUsers = [];    // danh sách phẳng cho modal chọn người
-let lastReadMap = {};       // roomId -> lastReadAt (Task 8 dùng)
+let lastReadMap = {};       // roomId -> lastReadAt
+let unreadByRoom = {};      // roomId -> số chưa đọc
+let unreadMsgs = {};        // roomId -> bản tin gần nhất (để tính lại khi mốc đọc đổi)
+let unreadSubs = {};        // roomId -> unsubscribe
+let readsUnsub = null;
 
 function esc(s) {
     if (typeof window !== 'undefined' && typeof window.escapeHtml === 'function') return window.escapeHtml(s);
@@ -178,6 +182,57 @@ export async function markRoomRead(roomId) {
             { merge: true }
         );
     } catch (e) { /* bỏ qua, không chặn chat */ }
+}
+
+/* ------------------------- Chưa đọc ------------------------- */
+
+// Nghe mốc đã đọc của mọi phòng để tính số chưa đọc.
+function subscribeReads() {
+    const S = fs;
+    const uid = currentUser && currentUser.uid;
+    if (!S || !uid) return function () { };
+    return S.onSnapshot(S.collection(db, 'users', uid, 'reads'), function (snap) {
+        const map = {};
+        snap.docs.forEach(function (d) {
+            map[d.id] = d.data().lastReadAt || null;
+        });
+        lastReadMap = map;
+        Object.keys(unreadMsgs).forEach(function (rid) {
+            unreadByRoom[rid] = unreadCount(unreadMsgs[rid], lastReadMap[rid]);
+        });
+        renderRoomList(roomsCache);
+    }, function (err) { console.warn('subscribeReads:', err); });
+}
+
+// Đảm bảo mỗi phòng (trừ phòng đang mở) có một listener đếm tin chưa đọc.
+function syncUnreadSubs(list) {
+    const S = fs;
+    if (!S) return;
+    const wanted = {};
+    (list || []).forEach(function (r) {
+        if (r.id === currentRoomId) return;
+        wanted[r.id] = true;
+        if (unreadSubs[r.id]) return;
+        const q = S.query(
+            S.collection(db, 'rooms', r.id, 'messages'),
+            S.orderBy('createdAt', 'asc'),
+            S.limit(50)
+        );
+        unreadSubs[r.id] = S.onSnapshot(q, function (snap) {
+            const msgs = snap.docs.map(unwrap);
+            unreadMsgs[r.id] = msgs;
+            unreadByRoom[r.id] = unreadCount(msgs, lastReadMap[r.id]);
+            renderRoomList(roomsCache);
+        }, function (err) { console.warn('unread ' + r.id + ':', err); });
+    });
+    Object.keys(unreadSubs).forEach(function (rid) {
+        if (!wanted[rid]) {
+            unreadSubs[rid]();
+            delete unreadSubs[rid];
+            delete unreadByRoom[rid];
+            delete unreadMsgs[rid];
+        }
+    });
 }
 
 /* ------------------------- Danh bạ người dùng ------------------------- */
@@ -526,6 +581,7 @@ export async function initChat(user) {
     wireGroupUi();
     await ensurePublicRoom();
     subscribeRoomList(null);
+    readsUnsub = subscribeReads();
     directoryUnsub = listDirectory(function () { renderPickUserList(); });
     openRoom('public');
 }
@@ -534,10 +590,17 @@ export function teardownChat() {
     if (roomListUnsub) { roomListUnsub(); roomListUnsub = null; }
     if (messagesUnsub) { messagesUnsub(); messagesUnsub = null; }
     if (directoryUnsub) { directoryUnsub(); directoryUnsub = null; }
+    if (readsUnsub) { readsUnsub(); readsUnsub = null; }
+    Object.keys(unreadSubs).forEach(function (rid) { unreadSubs[rid](); });
+    unreadSubs = {};
+    unreadByRoom = {};
+    unreadMsgs = {};
+    lastReadMap = {};
     currentUser = null;
     currentRoomId = null;
     roomsCache = [];
     directoryMap = {};
+    directoryUsers = [];
     const rl = document.getElementById('roomList');
     if (rl) rl.innerHTML = '';
     const ml = document.getElementById('messageList');
@@ -561,15 +624,18 @@ function renderRoomList(list) {
         const preview = room.lastMessage
             ? esc(room.lastMessage.senderName || '') + ': ' + esc(room.lastMessage.text || '')
             : 'Chưa có tin nhắn';
+        const unread = unreadByRoom[room.id] || 0;
         item.innerHTML =
             '<div class="room-item-main">' +
             '<div class="room-item-name">' + esc(label) + '</div>' +
             '<div class="room-item-preview">' + preview + '</div>' +
-            '</div>';
+            '</div>' +
+            (unread ? '<span class="room-badge">' + (unread > 99 ? '99+' : unread) + '</span>' : '');
         item.addEventListener('click', function () { openRoom(room.id); });
         el.appendChild(item);
     });
     updateGroupInfoBtn();
+    syncUnreadSubs(list);
     const gi = document.getElementById('groupInfoModal');
     if (gi && !gi.classList.contains('hidden')) renderGroupInfo();
 }
