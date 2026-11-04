@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Thời khóa biểu - UniSchedule AI</title>
+    <!-- CSS viết trực tiếp trong file, không dùng CDN -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- ============ Bộ icon SVG nội bộ (không dùng FontAwesome) ============ -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+        <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></symbol>
+        <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2"/></symbol>
+        <symbol id="i-week" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8.5 9.5v11M15.5 9.5v11"/></symbol>
+        <symbol id="i-table" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M9 9.5v11M15 9.5v11"/></symbol>
+        <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6.5h12M8 12h12M8 17.5h12M3.5 6.5h.01M3.5 12h.01M3.5 17.5h.01"/></symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+        <symbol id="i-chev-left" viewBox="0 0 24 24"><path d="M15 5.5l-6.5 6.5 6.5 6.5"/></symbol>
+        <symbol id="i-chev-right" viewBox="0 0 24 24"><path d="M9 5.5l6.5 6.5L9 18.5"/></symbol>
+        <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
+        <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="2.5"/></symbol>
+        <symbol id="i-upload" viewBox="0 0 24 24"><path d="M8 8.5L12 4.5l4 4M12 4.5V15"/><path d="M5 14v3.5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V14"/></symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 12.5a2 2 0 0 0 2 1.9h5a2 2 0 0 0 2-1.9L17.5 7"/></symbol>
+        <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.5l2.5 2.5L7.5 18.5 4 20z"/><path d="M14.5 6.5l3 3"/></symbol>
+        <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21c4-4.7 7-7.6 7-11a7 7 0 1 0-14 0c0 3.4 3 6.3 7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+        <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></symbol>
+        <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3.5h8l4 4V20.5H6z"/><path d="M14 3.5v4h4"/></symbol>
+        <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="12" r="3.5"/><path d="M11.5 12H21M18 12v3M15 12v2"/></symbol>
+        <symbol id="i-robot" viewBox="0 0 24 24"><rect x="4.5" y="8" width="15" height="11" rx="2.5"/><path d="M12 4v4M8.5 19v2M15.5 19v2"/><circle cx="9.5" cy="13" r="1"/><circle cx="14.5" cy="13" r="1"/></symbol>
+        <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9.5 3h5M10.5 3v6l-5 9a1.2 1.2 0 0 0 1 1.8h11a1.2 1.2 0 0 0 1-1.8l-5-9V3"/></symbol>
+        <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 8.5V3.5h10v5"/><rect x="4" y="8.5" width="16" height="8" rx="1.5"/><path d="M7 14h10v6.5H7z"/></symbol>
+        <symbol id="i-excel" viewBox="0 0 24 24"><path d="M6 3.5h8l4 4V20.5H6z"/><path d="M14 3.5v4h4M9 12l5 5M14 12l-5 5"/></symbol>
+        <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.7a3 3 0 0 1 0 5.6M17 13.6a5.5 5.5 0 0 1 3.5 5.4"/></symbol>
+        <symbol id="i-building" viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="1.5"/><path d="M9 7.5h2M13 7.5h2M9 11.5h2M13 11.5h2M9 15.5h2M13 15.5h2M10 20.5v-3h4v3"/></symbol>
+        <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17l-5.2 2.6 1-5.8L3.5 9.7l5.9-.9z"/></symbol>
+        <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5h.01"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/></symbol>
+        <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4l8.5 15h-17z"/><path d="M12 9.5v4M12 16.5h.01"/></symbol>
+        <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+        <symbol id="i-phone" viewBox="0 0 24 24"><path d="M6 4h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3a2 2 0 0 1-2 2A16 16 0 0 1 4 6a2 2 0 0 1 2-2z"/></symbol>
+        <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18.5a4 4 0 0 1 0-8 5.5 5.5 0 0 1 10.5-1.2A3.8 3.8 0 0 1 17.5 18.5z"/></symbol>
+        <symbol id="i-mug" viewBox="0 0 24 24"><path d="M5 7h11v7a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z"/><path d="M16 8.5h2a2.5 2.5 0 0 1 0 5h-2"/></symbol>
+        <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v10M8 10.5l4 4 4-4M5 19.5h14"/></symbol>
+    </svg>
+
+    <!-- ============ Header ============ -->
+    <header class="app-header">
+        <div class="header-inner">
+            <div class="brand">
+                <div class="brand-logo"><svg class="ico"><use href="#i-calendar"/></svg></div>
+                <div>
+                    <h1>UniSchedule AI</h1>
+                    <p>Thời khóa biểu sinh viên</p>
+                </div>
+            </div>
+            <button class="btn btn-glass btn-sm" onclick="openModal('addSubjectModal')">
+                <svg class="ico"><use href="#i-plus"/></svg>
+                <span class="hide-sm">Thêm môn</span>
+            </button>
+        </div>
+
+        <nav class="tabs">
+            <button class="tab-nav active" id="btnTabToday" onclick="switchTab('todayTab')"><svg class="ico"><use href="#i-clock"/></svg><span>Theo Ngày</span></button>
+            <button class="tab-nav" id="btnTabWeek" onclick="switchTab('weekTab')"><svg class="ico"><use href="#i-week"/></svg><span>Cả Tuần</span></button>
+            <button class="tab-nav" id="btnTabSheet" onclick="switchTab('sheetTab')"><svg class="ico"><use href="#i-table"/></svg><span>Bảng TKB</span></button>
+            <button class="tab-nav" id="btnTabOCR" onclick="switchTab('ocrTab')"><svg class="ico"><use href="#i-robot"/></svg><span>Quét Ảnh AI</span></button>
+            <button class="tab-nav" id="btnTabList" onclick="switchTab('listTab')"><svg class="ico"><use href="#i-list"/></svg><span>Quản Lý Môn</span></button>
+        </nav>
+    </header>
+
+    <main class="page">
+
+        <!-- ============ TAB 1: THEO NGÀY ============ -->
+        <section id="todayTab" class="tab-content">
+            <div class="card toolbar">
+                <div class="row">
+                    <button class="icon-btn" onclick="changeDate(-1)" title="Ngày trước"><svg class="ico"><use href="#i-chev-left"/></svg></button>
+                    <input type="date" id="selectedDateInput" class="input" onchange="onDateInputChange(this.value)">
+                    <button class="icon-btn" onclick="changeDate(1)" title="Ngày sau"><svg class="ico"><use href="#i-chev-right"/></svg></button>
+                </div>
+                <div class="row">
+                    <span id="displayDayInfo" class="badge badge-soft"></span>
+                    <button class="btn btn-primary btn-sm" onclick="selectToday()">
+                        <svg class="ico"><use href="#i-target"/></svg><span>Hôm nay</span>
+                    </button>
+                </div>
+            </div>
+            <div id="dailySubjectsContainer" class="stack"></div>
+        </section>
+
+        <!-- ============ TAB 2: CẢ TUẦN ============ -->
+        <section id="weekTab" class="tab-content hidden">
+            <div class="card toolbar center">
+                <button class="icon-btn" onclick="changeWeek(-1)" title="Tuần trước"><svg class="ico"><use href="#i-chev-left"/></svg></button>
+                <div>
+                    <div id="weekRangeLabel" class="strong"></div>
+                    <div id="weekSubLabel" class="muted small"></div>
+                </div>
+                <button class="icon-btn" onclick="changeWeek(1)" title="Tuần sau"><svg class="ico"><use href="#i-chev-right"/></svg></button>
+            </div>
+            <div id="weeklyScheduleContainer" class="stack"></div>
+        </section>
+
+        <!-- ============ TAB 3: BẢNG TKB ============ -->
+        <section id="sheetTab" class="tab-content hidden">
+            <div class="card">
+                <h2 class="card-title"><svg class="ico"><use href="#i-table"/></svg> Bảng thời khóa biểu</h2>
+                <p class="muted small" style="margin:4px 0 0">Toàn bộ dữ liệu dạng bảng như file TKB chính thức.</p>
+            </div>
+
+            <div id="sheetPrintArea" class="card scroll-x">
+                <div class="sheet-head">
+                    <div class="sheet-title">Thời khóa biểu</div>
+                    <div class="sheet-sub">Dữ liệu cá nhân</div>
+                </div>
+                <table class="sheet-table sheet-fit">
+                    <colgroup>
+                        <col style="width:3%"><!-- TT -->
+                        <col style="width:7%"><!-- Lớp -->
+                        <col style="width:4%"><!-- Sĩ số -->
+                        <col style="width:12%"><!-- Tên học phần -->
+                        <col style="width:4%"><!-- Số TC -->
+                        <col style="width:5%"><!-- Tổng số tiết -->
+                        <col style="width:5%"><!-- Buổi -->
+                        <col style="width:6%"><!-- Thứ -->
+                        <col style="width:5%"><!-- Tiết -->
+                        <col style="width:7%"><!-- Từ ngày -->
+                        <col style="width:7%"><!-- Đến ngày -->
+                        <col style="width:6%"><!-- Phòng học -->
+                        <col style="width:7%"><!-- Đơn vị -->
+                        <col style="width:9%"><!-- Giảng viên -->
+                        <col style="width:6%"><!-- Hình thức thi -->
+                        <col style="width:7%"><!-- Ghi chú -->
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th>TT</th>
+                            <th>Lớp</th>
+                            <th>Sĩ số</th>
+                            <th>Tên học phần</th>
+                            <th>Số TC</th>
+                            <th>Tổng số tiết</th>
+                            <th>Buổi</th>
+                            <th>Thứ</th>
+                            <th>Tiết</th>
+                            <th>Từ ngày</th>
+                            <th>Đến ngày</th>
+                            <th>Phòng học</th>
+                            <th>Đơn vị</th>
+                            <th>Giảng viên</th>
+                            <th>Hình thức thi</th>
+                            <th>Ghi chú</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sheetTableBody"></tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title"><svg class="ico"><use href="#i-clock"/></svg> Phân bố tiết học</h3>
+                <div class="scroll-x" style="margin-top:12px; border:1px solid var(--border); border-radius:12px">
+                    <table class="sheet-table period-table" style="min-width:420px">
+                        <thead>
+                            <tr>
+                                <th style="width:80px">Buổi</th>
+                                <th style="width:70px">Tiết học</th>
+                                <th style="width:130px">Giờ học</th>
+                                <th style="width:110px">Thời gian nghỉ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="periodTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ TAB 4: QUÉT ẢNH AI ============ -->
+        <section id="ocrTab" class="tab-content hidden">
+            <div class="card stack">
+                <div style="border-bottom:1px solid var(--border); padding-bottom:12px">
+                    <h2 class="card-title"><svg class="ico"><use href="#i-robot"/></svg> Tải ảnh TKB &amp; Phân tích tự động</h2>
+                    <p class="muted small" style="margin:6px 0 0">Tải lên ảnh chụp thời khóa biểu. Gemini AI sẽ đọc môn học, lớp, số tín chỉ, phòng, tiết, giảng viên và khoảng thời gian giúp bạn.</p>
+                </div>
+
+                <div class="config-box">
+                    <div class="config-toggle" id="apiKeyToggle" onclick="toggleApiKeyInput()">
+                        <span class="row" style="gap:6px"><svg class="ico" style="color:var(--amber)"><use href="#i-key"/></svg> Cấu hình Gemini API Key (Tùy chọn)</span>
+                        <svg class="ico chev"><use href="#i-chev-down"/></svg>
+                    </div>
+                    <div id="apiKeyContainer" class="config-body hidden">
+                        <input type="password" id="customApiKeyInput" placeholder="Nhập API Key Gemini nếu có (mặc định dùng key hệ thống)" class="input">
+                    </div>
+                </div>
+
+                <div class="dropzone" id="dropzone" onclick="document.getElementById('imageFileInput').click()">
+                    <input type="file" id="imageFileInput" accept="image/*" class="hidden" onchange="handleImageSelected(event)">
+                    <div id="uploadPlaceholder">
+                        <div class="cloud"><svg class="ico"><use href="#i-upload"/></svg></div>
+                        <div class="dz-title">Chạm để chọn ảnh hoặc kéo thả vào đây</div>
+                        <p class="dz-hint">Hỗ trợ PNG, JPG, WEBP (ảnh rõ nét để AI đọc chính xác nhất)</p>
+                    </div>
+                    <div id="imagePreviewContainer" class="hidden">
+                        <img id="imagePreview" alt="Ảnh TKB">
+                        <div style="margin-top:10px">
+                            <button type="button" class="btn btn-danger btn-sm" onclick="event.stopPropagation(); removeSelectedImage();">
+                                <svg class="ico"><use href="#i-trash"/></svg> Đổi ảnh khác
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row wrap">
+                    <button id="btnProcessOCR" class="btn btn-primary grow" onclick="processImageOCR()" disabled>
+                        <svg class="ico"><use href="#i-robot"/></svg><span id="ocrBtnText">Phân Tích Với Gemini AI</span>
+                    </button>
+                    <button class="btn btn-warning grow" onclick="loadSampleData()">
+                        <svg class="ico"><use href="#i-flask"/></svg><span>Nạp Dữ Liệu Mẫu</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="ocrReviewSection" class="card hidden">
+                <div class="center-between" style="border-bottom:1px solid var(--border); padding-bottom:12px">
+                    <div>
+                        <h3 class="card-title" style="color:var(--green)"><svg class="ico" style="color:var(--green)"><use href="#i-check"/></svg> Kết quả nhận diện môn học</h3>
+                        <p class="muted small" style="margin:4px 0 0">Mỗi <strong>buổi học là một dòng riêng</strong> (chỉ 1 thứ). Kiểm tra và sửa trực tiếp trong bảng trước khi lưu.</p>
+                    </div>
+                    <span id="ocrCountBadge" class="badge badge-success">0 môn</span>
+                </div>
+
+                <div class="ocr-wrap" style="margin-top:12px">
+                    <table class="ocr-table">
+                        <thead>
+                            <tr>
+                                <th class="text-center" style="width:40px">STT</th>
+                                <th style="min-width:150px">Tên học phần</th>
+                                <th style="width:110px">Lớp</th>
+                                <th style="width:60px">Sĩ số</th>
+                                <th style="width:60px">Số TC</th>
+                                <th style="width:80px">Tổng tiết</th>
+                                <th style="width:80px">Thứ</th>
+                                <th style="width:90px">Tiết</th>
+                                <th style="width:110px">Từ ngày</th>
+                                <th style="width:110px">Đến ngày</th>
+                                <th style="width:90px">Buổi</th>
+                                <th style="width:90px">Phòng</th>
+                                <th style="width:100px">Đơn vị</th>
+                                <th style="width:120px">Giảng viên</th>
+                                <th style="width:110px">Hình thức thi</th>
+                                <th style="min-width:110px">Ghi chú</th>
+                                <th style="width:44px" class="text-center">Xóa</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ocrTableBody"></tbody>
+                    </table>
+                </div>
+
+                <div class="center-between" style="margin-top:14px">
+                    <button class="btn btn-light btn-sm" onclick="addOcrRow()">
+                        <svg class="ico"><use href="#i-plus"/></svg> Thêm hàng mới
+                    </button>
+                    <button class="btn btn-success" onclick="saveOcrResultsToSchedule()">
+                        <svg class="ico"><use href="#i-download"/></svg> Lưu Tất Cả Vào Thời Khóa Biểu
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ TAB 5: QUẢN LÝ MÔN ============ -->
+        <section id="listTab" class="tab-content hidden">
+            <div class="card center-between">
+                <div>
+                    <h2 class="card-title">Danh sách toàn bộ môn học</h2>
+                    <p class="muted small" style="margin:4px 0 0">Quản lý, chỉnh sửa hoặc xóa thông tin môn học đã lưu.</p>
+                </div>
+                <button class="btn btn-danger btn-sm" onclick="confirmClearAll()">
+                    <svg class="ico"><use href="#i-trash"/></svg> Xóa tất cả
+                </button>
+            </div>
+            <div id="allSubjectsListContainer" class="stack"></div>
+        </section>
+    </main>
+
+    <!-- ============ MODAL: Thêm / Sửa môn ============ -->
+    <div id="addSubjectModal" class="modal-backdrop hidden">
+        <div class="modal">
+            <div class="modal-head">
+                <h3 id="modalSubjectTitle">Thêm môn học mới</h3>
+                <button class="modal-close" onclick="closeModal('addSubjectModal')"><svg class="ico"><use href="#i-x"/></svg></button>
+            </div>
+            <form id="subjectForm" onsubmit="handleSubjectFormSubmit(event)">
+                <div class="modal-body">
+                    <input type="hidden" id="fieldId">
+
+                    <div>
+                        <label class="label">Tên học phần *</label>
+                        <input type="text" id="fieldTenHocPhan" required placeholder="VD: Nhập môn lập trình" class="input">
+                    </div>
+
+                    <div class="form-grid">
+                        <div>
+                            <label class="label">Lớp</label>
+                            <input type="text" id="fieldLop" placeholder="VD: CNTT01" class="input">
+                        </div>
+                        <div>
+                            <label class="label">Sĩ số</label>
+                            <input type="number" id="fieldSiSo" min="0" placeholder="VD: 40" class="input">
+                        </div>
+                    </div>
+
+                    <div class="form-grid">
+                        <div>
+                            <label class="label">Số TC</label>
+                            <input type="number" id="fieldSoTC" min="0" placeholder="VD: 3" class="input">
+                        </div>
+                        <div>
+                            <label class="label">Tổng số tiết</label>
+                            <input type="number" id="fieldTongSoTiet" min="0" placeholder="VD: 45" class="input">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="label">Đơn vị</label>
+                        <input type="text" id="fieldDonVi" placeholder="VD: Khoa CNTT" class="input">
+                    </div>
+
+                    <div>
+                        <label class="label">Thứ học * (chọn được nhiều ngày)</label>
+                        <div id="fieldThuGroup" class="chip-group">
+                            <button type="button" class="chip" data-thu="2">Thứ 2</button>
+                            <button type="button" class="chip" data-thu="3">Thứ 3</button>
+                            <button type="button" class="chip" data-thu="4">Thứ 4</button>
+                            <button type="button" class="chip" data-thu="5">Thứ 5</button>
+                            <button type="button" class="chip" data-thu="6">Thứ 6</button>
+                            <button type="button" class="chip" data-thu="7">Thứ 7</button>
+                            <button type="button" class="chip" data-thu="8">CN</button>
+                        </div>
+                    </div>
+
+                    <div class="form-grid">
+                        <div>
+                            <label class="label">Tiết học</label>
+                            <input type="text" id="fieldTietHoc" oninput="updateGioHocPreview()" placeholder="VD: 1-5 hoặc 6-10" class="input">
+                        </div>
+                        <div>
+                            <label class="label">Giờ học (tự tính)</label>
+                            <input type="text" id="fieldGioHocPreview" readonly placeholder="--:-- - --:--" class="input">
+                        </div>
+                    </div>
+
+                    <div class="form-grid">
+                        <div>
+                            <label class="label">Từ ngày *</label>
+                            <input type="date" id="fieldTuNgay" required class="input">
+                        </div>
+                        <div>
+                            <label class="label">Đến ngày *</label>
+                            <input type="date" id="fieldDenNgay" required class="input">
+                        </div>
+                    </div>
+
+                    <div class="form-grid">
+                        <div>
+                            <label class="label">Buổi học</label>
+                            <select id="fieldBuoiHoc">
+                                <option value="Sáng">Sáng</option>
+                                <option value="Chiều">Chiều</option>
+                                <option value="Tối">Tối</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="label">Phòng học</label>
+                            <input type="text" id="fieldPhongHoc" placeholder="VD: A101" class="input">
+                        </div>
+                    </div>
+
+                    <div class="form-grid">
+                        <div>
+                            <label class="label">Giảng viên</label>
+                            <input type="text" id="fieldGiangVien" placeholder="VD: TS. Nguyễn Văn A" class="input">
+                        </div>
+                        <div>
+                            <label class="label">Hình thức thi</label>
+                            <input type="text" id="fieldHinhThucThi" placeholder="VD: Tự luận / TN trên MT" class="input">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="label">Ghi chú</label>
+                        <textarea id="fieldGhiChu" rows="2" placeholder="VD: 0123456789" class="input"></textarea>
+                    </div>
+                </div>
+                <div class="modal-foot">
+                    <button type="button" class="btn btn-light" onclick="closeModal('addSubjectModal')">Hủy</button>
+                    <button type="submit" class="btn btn-primary">Lưu môn học</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toastContainer" class="toast-wrap"></div>
+
+    <script src="script.js" defer></script>
+</body>
+</html>
