@@ -25,8 +25,6 @@ service cloud.firestore {
 
     // Phòng chat: phòng chung, chat riêng 1-1, chat nhóm.
     match /rooms/{roomId} {
-      function isMember() { return request.auth != null && request.auth.uid in resource.data.members; }
-      function isPublic() { return resource.data.type == 'public'; }
       allow read: if request.auth != null && (resource.data.type == 'public' || request.auth.uid in resource.data.members);
       allow create: if request.auth != null && (
           (request.resource.data.type == 'public' && roomId == 'public') ||
@@ -34,8 +32,20 @@ service cloud.firestore {
           (request.resource.data.type == 'group' && request.resource.data.ownerId == request.auth.uid && request.auth.uid in request.resource.data.members)
       );
       allow update: if request.auth != null && (
-          request.resource.data.type == 'public' ||
-          request.auth.uid in resource.data.members
+          // Phòng chung: chỉ được đổi tin nhắn cuối / mốc thời gian.
+          (resource.data.type == 'public' &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage', 'updatedAt'])) ||
+          // Chat riêng: thành viên (chủ yếu đổi lastMessage).
+          (resource.data.type == 'direct' && request.auth.uid in resource.data.members) ||
+          // Chat nhóm: thành viên; đổi name/members thì phải là người tạo hoặc đang tự rời.
+          (resource.data.type == 'group' && request.auth.uid in resource.data.members && (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['name', 'members']) ||
+              resource.data.ownerId == request.auth.uid ||
+              (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'updatedAt']) &&
+               request.auth.uid in resource.data.members &&
+               !(request.auth.uid in request.resource.data.members) &&
+               request.resource.data.members.size() == resource.data.members.size() - 1)
+          ))
       );
       allow delete: if request.auth != null && resource.data.type == 'group' && resource.data.ownerId == request.auth.uid;
 

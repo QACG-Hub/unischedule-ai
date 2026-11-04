@@ -287,12 +287,243 @@ function wireChatUi() {
     }
 }
 
+/* ------------------------- Chat nhóm ------------------------- */
+
+export async function createGroup(name, memberUids) {
+    if (!fs || !currentUser) return null;
+    const S = fs;
+    const cleanName = String(name || '').trim() || 'Nhóm';
+    const ids = Array.from(new Set([currentUser.uid].concat(memberUids || [])));
+    const ref = await S.addDoc(S.collection(db, 'rooms'), {
+        type: 'group',
+        name: cleanName,
+        members: ids,
+        ownerId: currentUser.uid,
+        createdAt: S.serverTimestamp(),
+        updatedAt: S.serverTimestamp(),
+        lastMessage: null
+    });
+    openRoom(ref.id);
+    return ref.id;
+}
+
+export async function renameGroup(roomId, name) {
+    if (!fs || !currentUser || !roomId) return;
+    const cleanName = String(name || '').trim();
+    if (!cleanName) return;
+    const S = fs;
+    await S.updateDoc(S.doc(db, 'rooms', roomId), { name: cleanName, updatedAt: S.serverTimestamp() });
+}
+
+export async function addGroupMembers(roomId, uids) {
+    if (!fs || !currentUser || !roomId || !uids || !uids.length) return;
+    const S = fs;
+    await S.updateDoc(S.doc(db, 'rooms', roomId), {
+        members: S.arrayUnion.apply(null, uids),
+        updatedAt: S.serverTimestamp()
+    });
+}
+
+export async function removeGroupMember(roomId, uid) {
+    if (!fs || !currentUser || !roomId || !uid) return;
+    const S = fs;
+    await S.updateDoc(S.doc(db, 'rooms', roomId), {
+        members: S.arrayRemove(uid),
+        updatedAt: S.serverTimestamp()
+    });
+}
+
+export async function leaveGroup(roomId) {
+    if (!currentUser) return;
+    await removeGroupMember(roomId, currentUser.uid);
+}
+
+function currentRoom() {
+    return roomsCache.filter(function (r) { return r.id === currentRoomId; })[0] || null;
+}
+
+/* ------------------------- UI nhóm ------------------------- */
+
+function renderCreateGroupList() {
+    const el = document.getElementById('groupMemberList');
+    if (!el) return;
+    const uid = currentUser && currentUser.uid;
+    const users = directoryUsers.filter(function (u) { return u.uid !== uid; });
+    el.innerHTML = '';
+    if (!users.length) {
+        el.innerHTML = '<div class="pick-user-empty">Chưa có người dùng khác.</div>';
+        return;
+    }
+    users.forEach(function (u) {
+        const row = document.createElement('label');
+        row.className = 'group-pick-row';
+        row.innerHTML =
+            '<input type="checkbox" value="' + esc(u.uid) + '">' +
+            '<span class="pick-user-name">' + esc(u.displayName || 'Người dùng') + '</span>' +
+            (u.class ? '<span class="pick-user-class">' + esc(u.class) + '</span>' : '');
+        el.appendChild(row);
+    });
+}
+
+function updateGroupInfoBtn() {
+    const btn = document.getElementById('groupInfoBtn');
+    if (!btn) return;
+    const room = currentRoom();
+    btn.classList.toggle('hidden', !(room && room.type === 'group'));
+}
+
+function renderGroupInfo() {
+    const room = currentRoom();
+    if (!room || room.type !== 'group') return;
+    const uid = currentUser && currentUser.uid;
+    const isOwner = room.ownerId === uid;
+
+    const nameEl = document.getElementById('groupInfoName');
+    if (nameEl) nameEl.textContent = room.name || 'Nhóm';
+
+    const renameInput = document.getElementById('groupRenameInput');
+    if (renameInput) renameInput.value = room.name || '';
+
+    const actions = document.getElementById('groupOwnerActions');
+    if (actions) actions.classList.toggle('hidden', !isOwner);
+
+    // Danh sách thành viên.
+    const list = document.getElementById('groupMemberListInfo');
+    if (list) {
+        list.innerHTML = '';
+        (room.members || []).forEach(function (m) {
+            const info = directoryMap[m] || {};
+            const isMe = m === uid;
+            const row = document.createElement('div');
+            row.className = 'group-member-row';
+            row.innerHTML = '<span class="pick-user-name">' + esc(info.displayName || 'Người dùng') + (isMe ? ' (bạn)' : '') + '</span>';
+            if (isOwner && !isMe) {
+                const rm = document.createElement('button');
+                rm.type = 'button';
+                rm.className = 'icon-btn';
+                rm.title = 'Xóa khỏi nhóm';
+                rm.innerHTML = '<svg class="ico"><use href="#i-x"/></svg>';
+                rm.addEventListener('click', function () {
+                    removeGroupMember(room.id, m).catch(function (e) { console.warn('removeGroupMember:', e); });
+                });
+                row.appendChild(rm);
+            }
+            list.appendChild(row);
+        });
+    }
+
+    // Danh sách có thể thêm (owner).
+    const addList = document.getElementById('groupAddList');
+    if (addList && isOwner) {
+        const members = room.members || [];
+        const candidates = directoryUsers.filter(function (u) {
+            return members.indexOf(u.uid) === -1;
+        });
+        addList.innerHTML = '';
+        if (!candidates.length) {
+            addList.innerHTML = '<div class="pick-user-empty">Không còn ai để thêm.</div>';
+        } else {
+            candidates.forEach(function (u) {
+                const row = document.createElement('label');
+                row.className = 'group-pick-row';
+                row.innerHTML =
+                    '<input type="checkbox" value="' + esc(u.uid) + '">' +
+                    '<span class="pick-user-name">' + esc(u.displayName || 'Người dùng') + '</span>';
+                addList.appendChild(row);
+            });
+        }
+    }
+}
+
+function openGroupInfo() {
+    const room = currentRoom();
+    if (!room || room.type !== 'group') return;
+    renderGroupInfo();
+    if (typeof window.openModal === 'function') window.openModal('groupInfoModal');
+}
+
+function wireGroupUi() {
+    const createBtn = document.getElementById('btnCreateGroup');
+    if (createBtn && !createBtn.dataset.wired) {
+        createBtn.dataset.wired = '1';
+        createBtn.addEventListener('click', function () {
+            const nameInput = document.getElementById('groupNameInput');
+            if (nameInput) nameInput.value = '';
+            renderCreateGroupList();
+            if (typeof window.openModal === 'function') window.openModal('createGroupModal');
+        });
+    }
+
+    const submit = document.getElementById('createGroupSubmit');
+    if (submit && !submit.dataset.wired) {
+        submit.dataset.wired = '1';
+        submit.addEventListener('click', function () {
+            const nameInput = document.getElementById('groupNameInput');
+            const name = nameInput ? nameInput.value : '';
+            const checks = document.querySelectorAll('#groupMemberList input[type="checkbox"]:checked');
+            const uids = Array.prototype.map.call(checks, function (c) { return c.value; });
+            if (!uids.length) {
+                if (typeof window.showToast === 'function') window.showToast('Chọn ít nhất một thành viên', 'info');
+                return;
+            }
+            if (typeof window.closeModal === 'function') window.closeModal('createGroupModal');
+            createGroup(name, uids).catch(function (e) { console.warn('createGroup:', e); });
+        });
+    }
+
+    const infoBtn = document.getElementById('groupInfoBtn');
+    if (infoBtn && !infoBtn.dataset.wired) {
+        infoBtn.dataset.wired = '1';
+        infoBtn.addEventListener('click', openGroupInfo);
+    }
+
+    const renameBtn = document.getElementById('groupRenameBtn');
+    if (renameBtn && !renameBtn.dataset.wired) {
+        renameBtn.dataset.wired = '1';
+        renameBtn.addEventListener('click', function () {
+            const input = document.getElementById('groupRenameInput');
+            const room = currentRoom();
+            if (!input || !room) return;
+            renameGroup(room.id, input.value).catch(function (e) { console.warn('renameGroup:', e); });
+        });
+    }
+
+    const addBtn = document.getElementById('groupAddMembersBtn');
+    if (addBtn && !addBtn.dataset.wired) {
+        addBtn.dataset.wired = '1';
+        addBtn.addEventListener('click', function () {
+            const room = currentRoom();
+            if (!room) return;
+            const checks = document.querySelectorAll('#groupAddList input[type="checkbox"]:checked');
+            const uids = Array.prototype.map.call(checks, function (c) { return c.value; });
+            if (!uids.length) return;
+            addGroupMembers(room.id, uids).catch(function (e) { console.warn('addGroupMembers:', e); });
+        });
+    }
+
+    const leaveBtn = document.getElementById('groupLeaveBtn');
+    if (leaveBtn && !leaveBtn.dataset.wired) {
+        leaveBtn.dataset.wired = '1';
+        leaveBtn.addEventListener('click', function () {
+            const room = currentRoom();
+            if (!room) return;
+            if (window.confirm('Rời khỏi nhóm "' + (room.name || 'Nhóm') + '"?')) {
+                leaveGroup(room.id).then(function () {
+                    if (typeof window.closeModal === 'function') window.closeModal('groupInfoModal');
+                    openRoom('public');
+                }).catch(function (e) { console.warn('leaveGroup:', e); });
+            }
+        });
+    }
+}
+
 /* ------------------------- Vòng đời ------------------------- */
 
 export async function initChat(user) {
     currentUser = user;
     await loadFs();
     wireChatUi();
+    wireGroupUi();
     await ensurePublicRoom();
     subscribeRoomList(null);
     directoryUnsub = listDirectory(function () { renderPickUserList(); });
@@ -338,6 +569,9 @@ function renderRoomList(list) {
         item.addEventListener('click', function () { openRoom(room.id); });
         el.appendChild(item);
     });
+    updateGroupInfoBtn();
+    const gi = document.getElementById('groupInfoModal');
+    if (gi && !gi.classList.contains('hidden')) renderGroupInfo();
 }
 
 function renderMessages(msgs) {

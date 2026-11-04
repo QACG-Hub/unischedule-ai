@@ -342,11 +342,17 @@
                     <button type="button" id="btnPickUser" class="btn btn-light btn-sm chat-new-dm">
                         <svg class="ico"><use href="#i-users"/></svg> Chat riêng
                     </button>
+                    <button type="button" id="btnCreateGroup" class="btn btn-light btn-sm chat-new-dm">
+                        <svg class="ico"><use href="#i-plus"/></svg> Tạo nhóm
+                    </button>
                     <div id="roomList" class="room-list"></div>
                 </aside>
                 <div id="chatPane" class="chat-pane card">
                     <div class="chat-pane-head">
                         <h2 id="chatTitle" class="card-title">Chọn một phòng</h2>
+                        <button type="button" id="groupInfoBtn" class="btn btn-light btn-sm hidden" title="Thông tin nhóm">
+                            <svg class="ico"><use href="#i-info"/></svg>
+                        </button>
                     </div>
                     <div id="messageList" class="message-list"></div>
                     <form id="messageForm" class="message-form">
@@ -487,6 +493,60 @@
             <div class="modal-body">
                 <input type="text" id="pickUserSearch" class="input" placeholder="Tìm theo tên..." autocomplete="off">
                 <div id="pickUserList" class="pick-user-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ MODAL: Tạo nhóm ============ -->
+    <div id="createGroupModal" class="modal-backdrop hidden">
+        <div class="modal">
+            <div class="modal-head">
+                <h3>Tạo nhóm chat</h3>
+                <button class="modal-close" onclick="closeModal('createGroupModal')"><svg class="ico"><use href="#i-x"/></svg></button>
+            </div>
+            <div class="modal-body">
+                <label class="label" for="groupNameInput">Tên nhóm</label>
+                <input type="text" id="groupNameInput" class="input" placeholder="VD: Nhóm KTPM K18" autocomplete="off">
+                <label class="label" style="margin-top:12px">Chọn thành viên</label>
+                <div id="groupMemberList" class="pick-user-list"></div>
+            </div>
+            <div class="modal-foot">
+                <button type="button" class="btn btn-light" onclick="closeModal('createGroupModal')">Hủy</button>
+                <button type="button" id="createGroupSubmit" class="btn btn-primary">Tạo nhóm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ MODAL: Thông tin nhóm ============ -->
+    <div id="groupInfoModal" class="modal-backdrop hidden">
+        <div class="modal">
+            <div class="modal-head">
+                <h3>Thông tin nhóm</h3>
+                <button class="modal-close" onclick="closeModal('groupInfoModal')"><svg class="ico"><use href="#i-x"/></svg></button>
+            </div>
+            <div class="modal-body">
+                <div id="groupInfoName" class="strong" style="font-size:15px"></div>
+
+                <label class="label" style="margin-top:12px">Thành viên</label>
+                <div id="groupMemberListInfo" class="pick-user-list"></div>
+
+                <div id="groupOwnerActions" class="hidden" style="margin-top:12px">
+                    <label class="label" for="groupRenameInput">Đổi tên nhóm</label>
+                    <div class="row">
+                        <input type="text" id="groupRenameInput" class="input">
+                        <button type="button" id="groupRenameBtn" class="btn btn-primary btn-sm">Lưu</button>
+                    </div>
+
+                    <label class="label" style="margin-top:12px">Thêm thành viên</label>
+                    <div id="groupAddList" class="pick-user-list"></div>
+                    <button type="button" id="groupAddMembersBtn" class="btn btn-light btn-sm" style="margin-top:8px">
+                        <svg class="ico"><use href="#i-plus"/></svg> Thêm đã chọn
+                    </button>
+                </div>
+
+                <button type="button" id="groupLeaveBtn" class="btn btn-danger btn-sm" style="margin-top:14px">
+                    Rời nhóm
+                </button>
             </div>
         </div>
     </div>
