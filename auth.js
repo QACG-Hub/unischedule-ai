@@ -10,6 +10,15 @@ import { normalizeUsername, looksLikeEmail } from './core.js';
 
 const RECOVERY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
+// Tên Edge Function đã deploy. Mặc định "account"; có thể ghi đè trong
+// supabase-config.js (accountFunction) nếu hàm được deploy dưới tên khác.
+function accountFunctionName() {
+    const g = globalThis;
+    const cfg = (g.window && g.window.SUPABASE_CONFIG) || g.SUPABASE_CONFIG || {};
+    const name = cfg && typeof cfg.accountFunction === 'string' ? cfg.accountFunction.trim() : '';
+    return name || 'account';
+}
+
 function requireClient() {
     if (!client) {
         throw Object.assign(new Error('Chưa cấu hình Supabase.'), { known: true });
@@ -43,7 +52,7 @@ export function createRecoveryCode() {
 // Gọi Edge Function "account"; lỗi trả { error } → ném Error có cờ known.
 async function callAccount(payload) {
     const c = requireClient();
-    const { data, error } = await c.functions.invoke('account', { body: payload });
+    const { data, error } = await c.functions.invoke(accountFunctionName(), { body: payload });
     if (error) {
         let msg = 'Không kết nối được máy chủ. Vui lòng thử lại.';
         try {

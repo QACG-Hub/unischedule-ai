@@ -36,13 +36,14 @@ window.SUPABASE_CONFIG = {
 2. Mở file `supabase/schema.sql`, copy toàn bộ, dán vào rồi **Run**.
 3. Kết quả mong đợi: `Success. No rows returned`.
 
-## 5. Deploy hàm `account`
+## 5. Deploy hàm xử lý tài khoản (`account`)
 
-1. **Edge Functions** → **Create a new function** (hoặc **Deploy a new function**).
+1. **Edge Functions** → **Create a new function** (hoặc **Deploy a new function** → **Via Editor**).
 2. Đặt tên chính xác: `account`.
 3. Xóa nội dung mẫu, dán toàn bộ file `supabase/functions/account/index.ts`.
 4. Bấm **Deploy**. Đợi tới khi trạng thái "Deployed".
 5. Không cần thêm secret — Supabase tự cấp biến môi trường.
+6. Nếu hàm lỡ được đặt **tên khác** `account` (VD `swift-api`), sửa `accountFunction` trong `supabase-config.js` cho khớp tên thật. Nếu đổi tên được trên Dashboard thì để nguyên `accountFunction: 'account'`.
 
 ## 6. (Tùy chọn) SMTP riêng cho email khôi phục
 
