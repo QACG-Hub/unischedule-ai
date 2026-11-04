@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   directRoomId, cacheKeyFor, shouldOfferUpload, filterDirectory,
-  roomLabel, unreadCount, validateRegistration, isPublicRoomId
+  roomLabel, unreadCount, validateRegistration, isPublicRoomId,
+  sortMessagesAsc, legacyCacheAllowed
 } from '../core.js';
 
 test('directRoomId không phụ thuộc thứ tự uid', () => {
@@ -69,4 +70,20 @@ test('filterDirectory bỏ qua người không có tên khi query rỗng', () =>
 
 test('shouldOfferUpload: đổi tài khoản trên cùng máy thì KHÔNG đề nghị tải lên', () => {
   assert.equal(shouldOfferUpload({ localOwner: 'oldUid', uid: 'newUid', hasLocalData: true, hasCloudData: false }), false);
+});
+
+test('sortMessagesAsc sắp tin cũ → mới, hỗ trợ Timestamp và số', () => {
+  const ts = (n) => ({ toMillis: () => n });
+  const msgs = [{ createdAt: ts(300) }, { createdAt: 100 }, { createdAt: ts(200) }];
+  const sorted = sortMessagesAsc(msgs);
+  assert.deepEqual(sorted.map((m) => (m.createdAt.toMillis ? m.createdAt.toMillis() : m.createdAt)), [100, 200, 300]);
+  assert.equal(sorted[0].createdAt, 100);
+  assert.equal(sorted[2].createdAt.toMillis(), 300);
+});
+
+test('legacyCacheAllowed chỉ khi cache chưa có chủ hoặc đúng chủ', () => {
+  assert.equal(legacyCacheAllowed(null, 'u1'), true);
+  assert.equal(legacyCacheAllowed(undefined, 'u1'), true);
+  assert.equal(legacyCacheAllowed('u1', 'u1'), true);
+  assert.equal(legacyCacheAllowed('uOld', 'u1'), false);
 });

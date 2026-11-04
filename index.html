@@ -57,7 +57,7 @@
                     <p>Thời khóa biểu sinh viên</p>
                 </div>
             </div>
-            <button id="addSubjectBtn" class="btn btn-glass btn-sm" onclick="openModal('addSubjectModal')">
+            <button id="addSubjectBtn" class="btn btn-glass btn-sm hidden" onclick="openModal('addSubjectModal')">
                 <svg class="ico"><use href="#i-plus"/></svg>
                 <span class="hide-sm">Thêm môn</span>
             </button>
@@ -70,7 +70,7 @@
             </div>
         </div>
 
-        <nav class="tabs">
+        <nav class="tabs hidden">
             <button class="tab-nav active" id="btnTabToday" onclick="switchTab('todayTab')"><svg class="ico"><use href="#i-clock"/></svg><span>Theo Ngày</span></button>
             <button class="tab-nav" id="btnTabWeek" onclick="switchTab('weekTab')"><svg class="ico"><use href="#i-week"/></svg><span>Cả Tuần</span></button>
             <button class="tab-nav" id="btnTabSheet" onclick="switchTab('sheetTab')"><svg class="ico"><use href="#i-table"/></svg><span>Bảng TKB</span></button>
@@ -119,7 +119,7 @@
         </div>
     </div>
 
-    <main class="page">
+    <main class="page hidden">
 
         <!-- ============ TAB 1: THEO NGÀY ============ -->
         <section id="todayTab" class="tab-content">
@@ -555,10 +555,30 @@
     <div id="toastContainer" class="toast-wrap"></div>
 
     <script src="firebase-config.js"></script>
+    <script src="script.js" defer></script>
+    <script>
+        // Cảnh báo khi mở sai cách bằng file://. Script module (firebase-init.js, main.js)
+        // KHÔNG chạy được ở file://, nên phải phát hiện bằng script classic này.
+        if (location.protocol === 'file:') {
+            document.addEventListener('DOMContentLoaded', function () {
+                var screen = document.getElementById('authScreen');
+                var err = document.getElementById('authError');
+                if (screen) screen.classList.remove('hidden');
+                if (err) {
+                    err.textContent = 'Ứng dụng cần chạy qua http(s). Hãy mở bằng server tĩnh (xem docs/firebase-setup.md).';
+                    err.classList.remove('hidden');
+                    err.classList.add('warn');
+                }
+                var submit = document.getElementById('authSubmit');
+                var google = document.getElementById('authGoogle');
+                if (submit) submit.disabled = true;
+                if (google) google.disabled = true;
+            });
+        }
+    </script>
     <script type="module" src="firebase-init.js"></script>
     <script type="module" src="cloud-sync.js"></script>
     <script type="module" src="chat.js"></script>
     <script type="module" src="main.js"></script>
-    <script src="script.js" defer></script>
 </body>
 </html>

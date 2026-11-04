@@ -10,6 +10,7 @@ import {
 } from './auth.js';
 import { validateRegistration } from './core.js';
 import { initChat, teardownChat, upsertDirectory } from './chat.js';
+import { ensureUserProfile } from './cloud-sync.js';
 
 let mode = 'login';
 
@@ -56,6 +57,7 @@ function applyUser(user) {
         if (typeof window.startUniSchedule === 'function') window.startUniSchedule(user);
         initChat(user).catch(function (err) { console.warn('initChat:', err); });
         upsertDirectory(user).catch(function (err) { console.warn('upsertDirectory:', err); });
+        ensureUserProfile(user).catch(function (err) { console.warn('ensureUserProfile:', err); });
     } else {
         showAuthScreen(true);
         $('userMenu').classList.add('hidden');

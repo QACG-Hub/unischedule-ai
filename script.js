@@ -160,8 +160,14 @@ function loadFromLocalStorage() {
         if (raw) {
             subjectsList = JSON.parse(raw);
         } else {
-            // Lần đầu trên máy này: đọc khóa cũ (chưa có chủ) làm nguồn để đề nghị tải lên cloud.
-            var legacy = localStorage.getItem(STORAGE_KEY);
+            // Chỉ đọc cache cũ (khóa chung, chưa gắn uid) khi chưa có chủ hoặc đúng chủ hiện tại,
+            // để tài khoản khác trên cùng máy không thấy TKB của người trước.
+            var localOwner = null;
+            try { localOwner = localStorage.getItem('UNI_LAST_UID'); } catch (e) { /* bỏ qua */ }
+            var allowed = typeof window.legacyCacheAllowed === 'function'
+                ? window.legacyCacheAllowed(localOwner, currentUid)
+                : (localOwner === null || localOwner === undefined || localOwner === currentUid);
+            var legacy = allowed ? localStorage.getItem(STORAGE_KEY) : null;
             subjectsList = legacy ? JSON.parse(legacy) : [];
         }
         // Tương thích dữ liệu cũ: gộp trường "sdt" vào "ghiChu"

@@ -5,11 +5,12 @@
    ========================================================================== */
 
 import { db, SDK_VERSION } from './firebase-init.js';
-import { cacheKeyFor, shouldOfferUpload } from './core.js';
+import { cacheKeyFor, shouldOfferUpload, legacyCacheAllowed } from './core.js';
 
 // Cầu nối cho script.js (classic script, không import ES module được).
 window.cacheKeyFor = cacheKeyFor;
 window.shouldOfferUpload = shouldOfferUpload;
+window.legacyCacheAllowed = legacyCacheAllowed;
 
 let fs = null;
 async function loadFs() {
@@ -83,6 +84,18 @@ export async function initSync(user) {
 export function teardownSync() {
     if (unsubscribe) { unsubscribe(); unsubscribe = null; }
     uid = null;
+}
+
+// Hồ sơ riêng tư users/{uid} (chứa email — chỉ chủ tài khoản đọc được).
+export async function ensureUserProfile(user) {
+    if (!user || !user.uid) return;
+    const S = await loadFs();
+    await S.setDoc(S.doc(db, 'users', user.uid), {
+        displayName: user.displayName || null,
+        email: user.email || null,
+        photoURL: user.photoURL || null,
+        updatedAt: S.serverTimestamp()
+    }, { merge: true });
 }
 
 // Cloud của tài khoản có đang trống không.

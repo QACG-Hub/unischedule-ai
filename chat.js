@@ -4,7 +4,7 @@
    ========================================================================== */
 
 import { db, SDK_VERSION } from './firebase-init.js';
-import { isPublicRoomId, unreadCount, roomLabel, directRoomId, filterDirectory } from './core.js';
+import { isPublicRoomId, unreadCount, roomLabel, directRoomId, filterDirectory, sortMessagesAsc, legacyCacheAllowed } from './core.js';
 
 let fs = null;
 async function loadFs() {
@@ -127,11 +127,11 @@ export function subscribeMessages(roomId, cb) {
     if (!S) return function () { };
     const q = S.query(
         S.collection(db, 'rooms', roomId, 'messages'),
-        S.orderBy('createdAt', 'asc'),
+        S.orderBy('createdAt', 'desc'),
         S.limit(50)
     );
     return S.onSnapshot(q, function (snap) {
-        const msgs = snap.docs.map(unwrap);
+        const msgs = sortMessagesAsc(snap.docs.map(unwrap));
         if (typeof cb === 'function') cb(msgs);
     }, function (err) { console.warn('subscribeMessages:', err); });
 }
@@ -215,7 +215,7 @@ function syncUnreadSubs(list) {
         if (unreadSubs[r.id]) return;
         const q = S.query(
             S.collection(db, 'rooms', r.id, 'messages'),
-            S.orderBy('createdAt', 'asc'),
+            S.orderBy('createdAt', 'desc'),
             S.limit(50)
         );
         unreadSubs[r.id] = S.onSnapshot(q, function (snap) {
@@ -575,12 +575,18 @@ function wireGroupUi() {
 /* ------------------------- Vòng đời ------------------------- */
 
 export async function initChat(user) {
+    if (!user) return;
+    // onAuthStateChanged có thể phát lại cho cùng người (refresh token) → không dựng lại listener.
+    if (currentUser) {
+        if (currentUser.uid === user.uid) { currentUser = user; return; }
+        teardownChat();
+    }
     currentUser = user;
     await loadFs();
     wireChatUi();
     wireGroupUi();
     await ensurePublicRoom();
-    subscribeRoomList(null);
+    roomListUnsub = subscribeRoomList(null);
     readsUnsub = subscribeReads();
     directoryUnsub = listDirectory(function () { renderPickUserList(); });
     openRoom('public');

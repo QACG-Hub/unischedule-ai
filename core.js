@@ -83,3 +83,18 @@ export function validateRegistration(input) {
 export function isPublicRoomId(id) {
     return id === 'public';
 }
+
+// Sắp xếp tin nhắn cũ → mới (Firestore desc + limit trả về mới nhất trước).
+export function sortMessagesAsc(messages) {
+    var list = Array.isArray(messages) ? messages.slice() : [];
+    return list.sort(function (a, b) {
+        var ta = toMillis(a && a.createdAt);
+        var tb = toMillis(b && b.createdAt);
+        return (ta === null ? 0 : ta) - (tb === null ? 0 : tb);
+    });
+}
+
+// Chỉ được đọc cache cũ (khóa chung, chưa gắn uid) khi chưa có chủ hoặc đúng chủ.
+export function legacyCacheAllowed(localOwner, uid) {
+    return localOwner === null || localOwner === undefined || localOwner === uid;
+}
