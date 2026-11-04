@@ -126,6 +126,9 @@ window.initSync = initSync;
 window.teardownSync = teardownSync;
 window.cloudSubjectsEmpty = cloudSubjectsEmpty;
 window.migrateLocalToCloud = migrateLocalToCloud;
+window.refreshCloudSubjects = function () {
+    refetch().catch(function (e) { console.warn('refreshCloudSubjects:', e); });
+};
 window.cloudSaveSubject = function (s) {
     saveSubject(s).catch(function (e) { console.warn('cloudSaveSubject:', e); });
 };

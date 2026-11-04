@@ -1065,7 +1065,7 @@ window.startUniSchedule = function (user) {
     currentUid = user ? user.uid : null;
     setAppVisible(true);
     init();
-    if (currentUid) setupCloudSync(user);
+    if (currentUid && !(user && user.guest)) setupCloudSync(user);
 };
 
 // Quyết định có nên mời người dùng tải TKB cục bộ lên tài khoản rồi mở đồng bộ.
