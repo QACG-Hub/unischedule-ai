@@ -14,6 +14,19 @@ export function cacheKeyFor(uid) {
     return 'uni_schedule_cache_v1__' + uid;
 }
 
+// uid cố định cho chế độ khách (dữ liệu chỉ lưu trên máy).
+export const GUEST_UID = 'guest';
+
+export function isGuestUid(uid) {
+    return uid === GUEST_UID;
+}
+
+// Chỉ migrate dữ liệu khách lên tài khoản khi đang trong luồng nâng cấp và có dữ liệu.
+export function shouldMigrateGuest(options) {
+    var o = options || {};
+    return !!o.upgradeMode && !!o.hasGuestData;
+}
+
 // Có nên đề nghị tải TKB cục bộ lên tài khoản không.
 // Chỉ khi: cloud đang trống, có dữ liệu cục bộ, và cache chưa có chủ hoặc đúng chủ.
 export function shouldOfferUpload(options) {

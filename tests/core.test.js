@@ -5,7 +5,8 @@ import {
   roomLabel, unreadCount, validateRegistration, isPublicRoomId,
   sortMessagesAsc, legacyCacheAllowed,
   normalizeUsername, isValidUsername, isValidRecoveryCode,
-  looksLikeEmail, validateSignup, profileUsername
+  looksLikeEmail, validateSignup, profileUsername,
+  GUEST_UID, isGuestUid, shouldMigrateGuest
 } from '../core.js';
 
 test('directRoomId không phụ thuộc thứ tự uid', () => {
@@ -129,4 +130,19 @@ test('profileUsername: ưu tiên username/displayName hợp lệ, KHÔNG bao gi�
   assert.equal(profileUsername({ uid: 'AbC12345-x', displayName: 'a@b.com' }), 'user_abc12345');
   assert.equal(profileUsername({ uid: 'u1', displayName: 'a@b.com' }).indexOf('@'), -1);
   assert.equal(profileUsername(null).indexOf('@'), -1);
+});
+
+test('isGuestUid nhận đúng uid khách', () => {
+  assert.equal(GUEST_UID, 'guest');
+  assert.equal(isGuestUid('guest'), true);
+  assert.equal(isGuestUid('0f8e-uid-that'), false);
+  // Cache khách tách biệt cache tài khoản thật.
+  assert.equal(cacheKeyFor(GUEST_UID), 'uni_schedule_cache_v1__guest');
+});
+
+test('shouldMigrateGuest chỉ khi đang nâng cấp và có dữ liệu khách', () => {
+  assert.equal(shouldMigrateGuest({ upgradeMode: true, hasGuestData: true }), true);
+  assert.equal(shouldMigrateGuest({ upgradeMode: true, hasGuestData: false }), false);
+  assert.equal(shouldMigrateGuest({ upgradeMode: false, hasGuestData: true }), false);
+  assert.equal(shouldMigrateGuest({}), false);
 });
