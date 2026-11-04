@@ -9,7 +9,7 @@ import {
     signOutAccount, requestPasswordReset, recoverWithCode, updatePassword,
     regenerateRecoveryCode, authErrorMessage, changePassword
 } from './auth.js';
-import { validateSignup, isValidRecoveryCode, GUEST_UID, isGuestUid, shouldMigrateGuest, cacheKeyFor } from './core.js';
+import { validateSignup, isValidRecoveryCode, GUEST_UID, shouldMigrateGuest, cacheKeyFor } from './core.js';
 import { initChat, teardownChat } from './chat.js';
 import { ensureUserProfile } from './cloud-sync.js';
 
@@ -101,6 +101,7 @@ function enterGuestUI() {
 
 function exitGuest() {
     guestActive = false;
+    upgradeMode = false;
     try { localStorage.removeItem(GUEST_KEY); } catch (e) { /* bỏ qua */ }
     if (typeof window.stopUniSchedule === 'function') window.stopUniSchedule();
     setChatVisible(true);
@@ -189,6 +190,7 @@ function initAuthUI() {
 
     $('guestBtn').addEventListener('click', function () {
         guestActive = true;
+        upgradeMode = false;
         try { localStorage.setItem(GUEST_KEY, '1'); } catch (e) { /* bỏ qua */ }
         enterGuestUI();
     });
@@ -355,6 +357,10 @@ function initAuthUI() {
         const newPw = $('cpNew').value;
         if (!oldPw) { showMsg('cpMsg', 'Vui lòng nhập mật khẩu cũ.'); return; }
         if (newPw.length < 6) { showMsg('cpMsg', 'Mật khẩu mới cần ít nhất 6 ký tự.'); return; }
+        const btn = $('cpSubmit');
+        const original = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Đang đổi...';
         try {
             await changePassword(email, oldPw, newPw);
             $('cpOld').value = '';
@@ -363,6 +369,9 @@ function initAuthUI() {
             if (typeof window.showToast === 'function') window.showToast('Đã đổi mật khẩu', 'info');
         } catch (err) {
             showMsg('cpMsg', authErrorMessage(err));
+        } finally {
+            btn.disabled = false;
+            btn.textContent = original;
         }
     });
 }

@@ -18,29 +18,38 @@ test('authErrorMessage: lạ thì bọc lại', () => {
 });
 
 function fakeClient(pwOk) {
-  return {
+  const calls = { updateUser: 0 };
+  const client = {
     auth: {
       signInWithPassword: async ({ password }) =>
         pwOk === password ? { error: null } : { error: { message: 'Invalid login credentials' } },
-      updateUser: async () => ({ error: null })
-    }
+      updateUser: async () => { calls.updateUser += 1; return { error: null }; }
+    },
+    calls
   };
+  return client;
 }
 
 test('changePassword: đổi được khi mk cũ đúng', async () => {
-  await assert.doesNotReject(() => changePassword('a@b.com', 'old123', 'new123456', fakeClient('old123')));
+  const c = fakeClient('old123');
+  await assert.doesNotReject(() => changePassword('a@b.com', 'old123', 'new123456', c));
+  assert.equal(c.calls.updateUser, 1);
 });
 
 test('changePassword: mk cũ sai thì báo lỗi known và KHÔNG đổi', async () => {
+  const c = fakeClient('old123');
   await assert.rejects(
-    () => changePassword('a@b.com', 'sai', 'new123456', fakeClient('old123')),
+    () => changePassword('a@b.com', 'sai', 'new123456', c),
     (e) => e.known === true && /Mật khẩu cũ không đúng/.test(e.message)
   );
+  assert.equal(c.calls.updateUser, 0);
 });
 
 test('changePassword: thiếu email thì báo lỗi', async () => {
+  const c = fakeClient('old123');
   await assert.rejects(
-    () => changePassword('', 'old123', 'new123456', fakeClient('old123')),
+    () => changePassword('', 'old123', 'new123456', c),
     /email tài khoản/
   );
+  assert.equal(c.calls.updateUser, 0);
 });
