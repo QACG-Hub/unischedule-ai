@@ -9,12 +9,14 @@ import {
     signOutAccount, requestPasswordReset, recoverWithCode, updatePassword,
     regenerateRecoveryCode, authErrorMessage
 } from './auth.js';
-import { validateSignup, isValidRecoveryCode } from './core.js';
+import { validateSignup, isValidRecoveryCode, GUEST_UID, isGuestUid } from './core.js';
 import { initChat, teardownChat } from './chat.js';
 import { ensureUserProfile } from './cloud-sync.js';
 
 let mode = 'login';
 let passwordRecovery = false;
+let guestActive = false;
+const GUEST_KEY = 'UNI_GUEST';
 
 function $(id) { return document.getElementById(id); }
 
@@ -54,8 +56,54 @@ function setMode(next) {
     clearMsg('authError');
 }
 
+function setChatVisible(visible) {
+    $('btnTabChat').classList.toggle('hidden', !visible);
+    if (!visible) {
+        $('chatTab').classList.add('hidden');
+        if (typeof window.switchTab === 'function') window.switchTab('todayTab');
+    }
+}
+
+function setHeaderMode(isGuest) {
+    $('upgradeBtn').classList.toggle('hidden', !isGuest);
+    $('recoveryBtn').classList.toggle('hidden', isGuest);
+    $('changePasswordBtn').classList.toggle('hidden', isGuest);
+}
+
+function guestUser() {
+    return { uid: GUEST_UID, id: GUEST_UID, guest: true, displayName: 'Khách', email: null };
+}
+
+function enterGuestUI() {
+    showAuthScreen(false);
+    showResetScreen(false);
+    showForgotPanel(false);
+    $('userMenu').classList.remove('hidden');
+    $('userName').textContent = 'Khách';
+    $('userAvatar').style.display = 'none';
+    setHeaderMode(true);
+    setChatVisible(false);
+    teardownChat();
+    if (typeof window.startUniSchedule === 'function') window.startUniSchedule(guestUser());
+}
+
+function exitGuest() {
+    guestActive = false;
+    try { localStorage.removeItem(GUEST_KEY); } catch (e) { /* bỏ qua */ }
+    if (typeof window.stopUniSchedule === 'function') window.stopUniSchedule();
+    setChatVisible(true);
+    setHeaderMode(false);
+    $('userMenu').classList.add('hidden');
+    showAuthScreen(true);
+    setMode('login');
+}
+
 function applyUser(user) {
     if (user) {
+        guestActive = false;
+        try { localStorage.removeItem(GUEST_KEY); } catch (e) { /* bỏ qua */ }
+        setHeaderMode(false);
+        setChatVisible(true);
         if (passwordRecovery) { showResetScreen(true); return; }
         showAuthScreen(false);
         showResetScreen(false);
@@ -68,6 +116,8 @@ function applyUser(user) {
         if (typeof window.startUniSchedule === 'function') window.startUniSchedule(user);
         initChat(user).catch(function (err) { console.warn('initChat:', err); });
         ensureUserProfile(user).catch(function (err) { console.warn('ensureUserProfile:', err); });
+    } else if (guestActive) {
+        enterGuestUI();
     } else {
         showAuthScreen(true);
         showResetScreen(false);
@@ -114,6 +164,12 @@ function initAuthUI() {
 
     $('authTabLogin').addEventListener('click', function () { showForgotPanel(false); setMode('login'); });
     $('authTabRegister').addEventListener('click', function () { showForgotPanel(false); setMode('register'); });
+
+    $('guestBtn').addEventListener('click', function () {
+        guestActive = true;
+        try { localStorage.setItem(GUEST_KEY, '1'); } catch (e) { /* bỏ qua */ }
+        enterGuestUI();
+    });
 
     $('authForm').addEventListener('submit', async function (e) {
         e.preventDefault();
@@ -263,6 +319,8 @@ function start() {
     }
 
     initAuthUI();
+
+    try { guestActive = localStorage.getItem(GUEST_KEY) === '1'; } catch (e) { /* bỏ qua */ }
 
     onAuthUser(applyUser);
 
