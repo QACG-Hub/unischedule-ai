@@ -238,7 +238,8 @@ function switchTab(tabId) {
         weekTab: 'btnTabWeek',
         sheetTab: 'btnTabSheet',
         ocrTab: 'btnTabOCR',
-        listTab: 'btnTabList'
+        listTab: 'btnTabList',
+        chatTab: 'btnTabChat'
     };
     var btn = map[tabId] && document.getElementById(map[tabId]);
     if (btn) btn.classList.add('active');

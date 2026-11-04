@@ -9,6 +9,7 @@ import {
     signOutUser, handleRedirectResult, authErrorMessage
 } from './auth.js';
 import { validateRegistration } from './core.js';
+import { initChat, teardownChat } from './chat.js';
 
 let mode = 'login';
 
@@ -53,9 +54,11 @@ function applyUser(user) {
         if (user.photoURL) { img.src = user.photoURL; img.style.display = ''; }
         else { img.removeAttribute('src'); img.style.display = 'none'; }
         if (typeof window.startUniSchedule === 'function') window.startUniSchedule(user);
+        initChat(user).catch(function (err) { console.warn('initChat:', err); });
     } else {
         showAuthScreen(true);
         $('userMenu').classList.add('hidden');
+        teardownChat();
         if (typeof window.stopUniSchedule === 'function') window.stopUniSchedule();
     }
 }

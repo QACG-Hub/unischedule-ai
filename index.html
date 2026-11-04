@@ -43,6 +43,8 @@
         <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18.5a4 4 0 0 1 0-8 5.5 5.5 0 0 1 10.5-1.2A3.8 3.8 0 0 1 17.5 18.5z"/></symbol>
         <symbol id="i-mug" viewBox="0 0 24 24"><path d="M5 7h11v7a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z"/><path d="M16 8.5h2a2.5 2.5 0 0 1 0 5h-2"/></symbol>
         <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v10M8 10.5l4 4 4-4M5 19.5h14"/></symbol>
+        <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 12.5a7.5 7.5 0 0 1-7.5 7.5H8l-4 3v-4.4A7.5 7.5 0 0 1 11.5 5 7.5 7.5 0 0 1 20 12.5z"/><path d="M8.5 12h6M8.5 15h4"/></symbol>
+        <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12l16-7-7 16-2-6z"/><path d="M11 15l9-10"/></symbol>
     </svg>
 
     <!-- ============ Header ============ -->
@@ -74,6 +76,7 @@
             <button class="tab-nav" id="btnTabSheet" onclick="switchTab('sheetTab')"><svg class="ico"><use href="#i-table"/></svg><span>Bảng TKB</span></button>
             <button class="tab-nav" id="btnTabOCR" onclick="switchTab('ocrTab')"><svg class="ico"><use href="#i-robot"/></svg><span>Quét Ảnh AI</span></button>
             <button class="tab-nav" id="btnTabList" onclick="switchTab('listTab')"><svg class="ico"><use href="#i-list"/></svg><span>Quản Lý Môn</span></button>
+            <button class="tab-nav" id="btnTabChat" onclick="switchTab('chatTab')"><svg class="ico"><use href="#i-chat"/></svg><span>Trò Chuyện</span></button>
         </nav>
     </header>
 
@@ -327,6 +330,31 @@
             </div>
             <div id="allSubjectsListContainer" class="stack"></div>
         </section>
+
+        <!-- ============ TAB 6: TRÒ CHUYỆN ============ -->
+        <section id="chatTab" class="tab-content hidden">
+            <div class="chat-layout">
+                <aside class="chat-rooms card">
+                    <div class="chat-rooms-head">
+                        <svg class="ico"><use href="#i-chat"/></svg>
+                        <span>Trò chuyện</span>
+                    </div>
+                    <div id="roomList" class="room-list"></div>
+                </aside>
+                <div id="chatPane" class="chat-pane card">
+                    <div class="chat-pane-head">
+                        <h2 id="chatTitle" class="card-title">Chọn một phòng</h2>
+                    </div>
+                    <div id="messageList" class="message-list"></div>
+                    <form id="messageForm" class="message-form">
+                        <input type="text" id="messageInput" class="input" placeholder="Nhập tin nhắn..." autocomplete="off">
+                        <button type="submit" class="btn btn-primary" title="Gửi">
+                            <svg class="ico"><use href="#i-send"/></svg>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </section>
     </main>
 
     <!-- ============ MODAL: Thêm / Sửa môn ============ -->
@@ -452,6 +480,7 @@
     <script src="firebase-config.js"></script>
     <script type="module" src="firebase-init.js"></script>
     <script type="module" src="cloud-sync.js"></script>
+    <script type="module" src="chat.js"></script>
     <script type="module" src="main.js"></script>
     <script src="script.js" defer></script>
 </body>
