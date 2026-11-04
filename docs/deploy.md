@@ -1,90 +1,66 @@
-# Triển khai UniSchedule AI lên Firebase Hosting
+# Triển khai UniSchedule AI (web tĩnh)
 
-Tài liệu này dành cho **chủ dự án**, làm một lần. Xem `docs/firebase-setup.md` để
-tạo project Firebase và lấy cấu hình trước.
+App là web tĩnh (HTML/CSS/JS thuần), **không cần build**. Chỉ cần đưa toàn bộ
+thư mục lên một dịch vụ host tĩnh có **HTTPS**. Xem `docs/supabase-setup.md`
+để tạo project Supabase và lấy cấu hình trước.
 
-## 1. Chuẩn bị
+> ⚠️ Phải chạy qua `http(s)`. Mở trực tiếp bằng `file://` sẽ không hoạt động
+> (module ES bị chặn) — `supabase-init.js` sẽ phát hiện và báo lỗi.
+
+## 1. Điền cấu hình trước khi deploy
+
+Mở `supabase-config.js` và dán **Project URL** + **anon/publishable key**:
+
+```js
+window.SUPABASE_CONFIG = {
+    url: 'https://<project-id>.supabase.co',
+    anonKey: '<anon-publishable-key>'
+};
+```
+
+Trong Supabase → **Authentication → URL Configuration**:
+- **Site URL**: địa chỉ deploy (VD `https://unischedule.pages.dev`).
+- **Redirect URLs**: thêm cùng địa chỉ đó (để link khôi phục mật khẩu quay lại đúng trang).
+
+> Nếu đổi địa chỉ deploy, nhớ cập nhật lại Site URL / Redirect URLs trong Supabase.
+
+## 2. Cách A — Cloudflare Pages (khuyên dùng, miễn phí)
+
+1. Đẩy thư mục dự án lên GitHub/GitLab, **hoặc** dùng "Direct Upload".
+2. Vào https://pages.cloudflare.com → **Create a project**.
+3. Nếu nối Git:
+   - **Framework preset**: `None`.
+   - **Build command**: để trống.
+   - **Build output directory**: `/` (thư mục gốc).
+4. Bấm **Save and Deploy**. Cloudflare cấp URL dạng `https://<ten>.pages.dev`.
+5. Mở URL, kiểm tra theo checklist trong `docs/supabase-setup.md`.
+
+## 3. Cách B — GitHub Pages
+
+1. Đẩy toàn bộ thư mục lên một repo GitHub.
+2. Repo → **Settings → Pages** → **Source**: `Deploy from a branch`.
+3. Chọn branch (`main`) và thư mục `/ (root)` → **Save**.
+4. Đợi 1–2 phút, mở `https://<user>.github.io/<repo>/`.
+5. Cập nhật **Site URL** / **Redirect URLs** trong Supabase cho khớp URL này.
+
+## 4. Cách C — bất kỳ host tĩnh nào
+
+Copy toàn bộ file (trừ `supabase/`, `docs/`, `tests/`, `.superpowers/` nếu muốn gọn)
+lên host (Vercel, Netlify, Nginx, ...). Yêu cầu duy nhất: phục vụ qua **HTTPS**
+và giữ nguyên cấu trúc thư mục (các module import lẫn nhau bằng đường dẫn tương đối).
+
+## 5. Chạy thử cục bộ trước khi deploy
 
 ```bash
 cd /public/tkb
-npm install -g firebase-tools
-firebase login
+npx serve
 ```
 
-## 2. Khởi tạo Hosting
+Mở địa chỉ `npx serve` in ra (VD `http://localhost:3000`). Nhớ thêm
+`http://localhost:3000` vào **Redirect URLs** trong Supabase nếu thử luồng email.
 
-```bash
-firebase init hosting
-```
+## 6. Cập nhật về sau
 
-- **Use an existing project** → chọn project đã tạo.
-- **Public directory**: `.` (thư mục hiện tại — app là tĩnh, không cần build).
-- **Single-page app rewrite**: **No** (đây là site tĩnh nhiều file, không phải SPA).
-- **Set up automatic builds with GitHub**: No (nếu không dùng).
-- **Overwrite index.html**: **No** (giữ `index.html` hiện có).
-
-Lệnh này tạo `firebase.json` và `.firebaserc` ở gốc dự án.
-
-## 3. Đưa Security Rules lên
-
-Cách A — dán tay (nhanh):
-
-1. Firebase Console → **Firestore Database → Rules**.
-2. Dán toàn bộ nội dung `firestore.rules` trong dự án → **Publish**.
-
-Cách B — dùng CLI (khuyên dùng, lặp lại được):
-
-```bash
-firebase deploy --only firestore:rules
-```
-
-Kiểm tra: sau khi publish, tạo thử một tài khoản khác và xác nhận không đọc được
-`users/{uid}` hay `rooms/{phòng riêng}` của người khác.
-
-## 4. Deploy website
-
-```bash
-firebase deploy --only hosting
-```
-
-Kết quả in ra URL dạng `https://<project>.web.app`.
-
-## 5. Thêm domain vào Authorized domains
-
-Firebase Console → **Authentication → Settings → Authorized domains** → **Add domain**:
-
-- `<project>.web.app`
-- `<project>.firebaseapp.com` (thường đã có)
-
-Thiếu bước này, đăng nhập Google sẽ báo `auth/unauthorized-domain`.
-
-## 6. Kiểm tra sau deploy (smoke)
-
-Mở URL Hosting và lần lượt kiểm:
-
-1. **Đăng nhập/Đăng ký**: tạo tài khoản email; đăng nhập Google.
-2. **Đồng bộ TKB**: thêm môn ở máy A → mở cùng tài khoản ở máy/ẩn danh B → thấy dữ liệu.
-3. **Chat phòng chung**: gửi ở A → B nhận gần như tức thì; tải lại vẫn còn.
-4. **Chat riêng**: A chọn B → gửi; B trả lời; hai bên thấy **cùng một** phòng.
-5. **Chat nhóm**: A tạo nhóm với B, C; đổi tên; thêm/bớt thành viên; C "Rời nhóm".
-6. **Chưa đọc**: ở B, đóng tab chat rồi để A gửi → B mở lại thấy badge số chưa đọc.
-7. **Console trình duyệt**: không có lỗi đỏ.
-
-## 7. Cập nhật sau này
-
-Mỗi khi sửa code:
-
-```bash
-firebase deploy --only hosting          # web
-firebase deploy --only firestore:rules  # chỉ khi đổi firestore.rules
-```
-
-## Xử lý sự cố nhanh
-
-| Triệu chứng | Nguyên nhân thường gặp |
-|---|---|
-| `missing-config` trong Console | Chưa dán `firebase-config.js` |
-| `file-protocol` | Mở `index.html` trực tiếp; phải chạy qua http(s) |
-| `auth/unauthorized-domain` | Chưa thêm domain ở bước 5 |
-| `Missing or insufficient permissions` | Chưa publish `firestore.rules` (bước 3) |
-| Google popup bị chặn | App tự chuyển sang redirect; cho phép popup nếu muốn nhanh hơn |
+Vì là web tĩnh, deploy lại = copy lại file. Không có bước build.
+Khi sửa bảng/RLS, chạy lại `supabase/schema.sql` trong SQL Editor (file an toàn
+khi chạy lặp). Khi sửa hàm `account`, deploy lại Edge Function đó.

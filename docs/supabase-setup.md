@@ -56,7 +56,8 @@ Email mặc định của Supabase giới hạn **2 mail/giờ**. Nếu dùng th
 
 - Web tĩnh phải chạy qua `http(s)`, **không** mở trực tiếp bằng `file://`.
 - Chạy thử nhanh: `npx serve` (hoặc bất kỳ server tĩnh nào) trong thư mục web rồi mở địa chỉ nó in ra.
-- Khi deploy: xem `docs/deploy.md`.
+- Khi deploy: xem `docs/deploy.md` (hướng dẫn Cloudflare Pages / GitHub Pages).
+- Nhắc lại: phải điền `supabase-config.js` (URL + anon key) trước khi deploy, và đặt **Site URL** trong Supabase khớp địa chỉ deploy.
 
 ## 8. Checklist kiểm thử (làm sau khi deploy)
 
