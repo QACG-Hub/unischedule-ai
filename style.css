@@ -97,7 +97,10 @@ body {
     gap: 12px;
 }
 
-.brand { display: flex; align-items: center; gap: 10px; }
+.header-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand > div { min-width: 0; }
 
 .brand-logo {
     width: 38px;
@@ -110,8 +113,8 @@ body {
     font-size: 20px;
 }
 
-.brand h1 { font-size: 17px; margin: 0; line-height: 1.1; font-weight: 700; }
-.brand p { font-size: 11px; margin: 2px 0 0; color: #dbeafe; }
+.brand h1 { font-size: 17px; margin: 0; line-height: 1.1; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand p { font-size: 11px; margin: 2px 0 0; color: #dbeafe; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .tabs {
     max-width: 1024px;
@@ -146,6 +149,20 @@ body {
 .tab-nav .ico { font-size: 15px; }
 .tab-nav:hover { color: #fff; }
 .tab-nav.active { color: #fff; border-bottom-color: #fff; }
+
+/* Header gọn trên màn hình nhỏ: nút chỉ còn icon, bỏ phụ đề, tab thu vừa màn hình */
+@media (max-width: 520px) {
+    .hide-sm { display: none; }
+    .brand p { display: none; }
+}
+@media (max-width: 400px) {
+    .brand > div { display: none; }
+}
+@media (max-width: 600px) {
+    .header-inner { gap: 8px; padding: 10px 12px; }
+    .tab-nav { min-width: 0; padding: 8px 4px; }
+    .tab-nav span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+}
 
 /* ---------- Page / layout ---------- */
 .page {
@@ -602,7 +619,8 @@ textarea { resize: vertical; }
 .auth-divider span { position: relative; background: #fff; padding: 0 10px; font-size: 11px; color: var(--muted); }
 .auth-error { margin: 0; padding: 9px 11px; border-radius: 10px; background: #fef2f2; color: var(--red); font-size: 12px; }
 .auth-error.warn { background: var(--amber-soft); color: #92400e; }
-.auth-link { background: none; border: none; color: var(--indigo); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px; align-self: flex-end; }
+.auth-links { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; margin-top: 8px; }
+.auth-link { background: none; border: none; color: var(--indigo); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px; }
 .auth-link:hover { text-decoration: underline; }
 
 /* ---------- Menu người dùng trên header ---------- */

@@ -57,23 +57,25 @@
                     <p>Thời khóa biểu sinh viên</p>
                 </div>
             </div>
-            <button id="addSubjectBtn" class="btn btn-glass btn-sm hidden" onclick="openModal('addSubjectModal')">
-                <svg class="ico"><use href="#i-plus"/></svg>
-                <span class="hide-sm">Thêm môn</span>
-            </button>
-            <div id="userMenu" class="user-menu hidden">
-                <img id="userAvatar" class="avatar" alt="" referrerpolicy="no-referrer">
-                <span id="userName" class="user-name"></span>
-                <button id="upgradeBtn" class="btn btn-glass btn-sm hidden" title="Nâng cấp tài khoản">Nâng cấp</button>
-                <button id="changePasswordBtn" class="btn btn-glass btn-sm" title="Đổi mật khẩu">
-                    <svg class="ico"><use href="#i-key"/></svg>
+            <div class="header-actions">
+                <button id="addSubjectBtn" class="btn btn-glass btn-sm hidden" onclick="openModal('addSubjectModal')">
+                    <svg class="ico"><use href="#i-plus"/></svg>
+                    <span class="hide-sm">Thêm môn</span>
                 </button>
-                <button id="recoveryBtn" class="btn btn-glass btn-sm" title="Tạo mã dự phòng mới">
-                    <svg class="ico"><use href="#i-key"/></svg>
-                </button>
-                <button id="logoutBtn" class="btn btn-glass btn-sm" title="Đăng xuất">
-                    <svg class="ico"><use href="#i-x"/></svg>
-                </button>
+                <div id="userMenu" class="user-menu hidden">
+                    <img id="userAvatar" class="avatar" alt="" referrerpolicy="no-referrer">
+                    <span id="userName" class="user-name"></span>
+                    <button id="upgradeBtn" class="btn btn-glass btn-sm hidden" title="Nâng cấp tài khoản">Nâng cấp</button>
+                    <button id="changePasswordBtn" class="btn btn-glass btn-sm" title="Đổi mật khẩu">
+                        <svg class="ico"><use href="#i-key"/></svg>
+                    </button>
+                    <button id="recoveryBtn" class="btn btn-glass btn-sm" title="Tạo mã dự phòng mới">
+                        <svg class="ico"><use href="#i-key"/></svg>
+                    </button>
+                    <button id="logoutBtn" class="btn btn-glass btn-sm" title="Đăng xuất">
+                        <svg class="ico"><use href="#i-x"/></svg>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -124,8 +126,10 @@
                 <button type="submit" id="authSubmit" class="btn btn-primary btn-block">Đăng nhập</button>
             </form>
 
-            <button type="button" id="forgotLink" class="auth-link">Quên mật khẩu?</button>
-            <button type="button" id="guestBtn" class="auth-link">Dùng tiếp không cần tài khoản</button>
+            <div class="auth-links">
+                <button type="button" id="forgotLink" class="auth-link">Quên mật khẩu?</button>
+                <button type="button" id="guestBtn" class="auth-link">Dùng tiếp không cần tài khoản</button>
+            </div>
 
             <div id="forgotPanel" class="stack hidden">
                 <div>
