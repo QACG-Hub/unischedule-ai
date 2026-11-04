@@ -1,10 +1,11 @@
 /* ==========================================================================
-   UniSchedule AI - Đồng bộ thời khóa biểu với Firestore
-   Nguồn sự thật là Firestore; localStorage chỉ là cache đọc nhanh.
-   SDK Firestore được nạp lười để không gọi mạng khi chưa cần.
+   UniSchedule AI - Đồng bộ thời khóa biểu với Supabase
+   Nguồn sự thật là bảng `subjects`; localStorage chỉ là cache đọc nhanh.
+   Cầu nối cho script.js (classic) được gán NGAY ở cấp module, vì
+   script.js gọi các cầu nối này ngay khi đăng nhập.
    ========================================================================== */
 
-import { db, SDK_VERSION } from './firebase-init.js';
+import { client } from './supabase-init.js';
 import { cacheKeyFor, shouldOfferUpload, legacyCacheAllowed } from './core.js';
 
 // Cầu nối cho script.js (classic script, không import ES module được).
@@ -12,109 +13,125 @@ window.cacheKeyFor = cacheKeyFor;
 window.shouldOfferUpload = shouldOfferUpload;
 window.legacyCacheAllowed = legacyCacheAllowed;
 
-let fs = null;
-async function loadFs() {
-    if (!fs) {
-        fs = await import(`https://www.gstatic.com/firebasejs/${SDK_VERSION}/firebase-firestore.js`);
+let uid = null;
+let channel = null;
+
+// Đọc lại toàn bộ môn của tài khoản rồi đẩy sang script.js.
+async function refetch() {
+    if (!client || !uid) return;
+    const { data, error } = await client
+        .from('subjects')
+        .select('id, payload')
+        .eq('owner', uid);
+    if (error) {
+        console.warn('Lỗi đọc danh sách môn:', error);
+        return;
     }
-    return fs;
+    const list = (data || []).map(function (row) {
+        return Object.assign({ id: row.id }, row.payload || {});
+    });
+    if (typeof window.applyCloudSubjects === 'function') window.applyCloudSubjects(list);
 }
 
-let uid = null;
-let unsubscribe = null;
-
-function subjectRef(S, id) {
-    return S.doc(db, 'users', uid, 'subjects', id);
+function subjectPayload(s) {
+    const payload = Object.assign({}, s);
+    delete payload.id;
+    return payload;
 }
 
 async function saveSubject(s) {
-    if (!uid || !s || !s.id) return;
-    const S = await loadFs();
-    const payload = Object.assign({}, s);
-    delete payload.id;
-    payload.updatedAt = S.serverTimestamp();
-    await S.setDoc(subjectRef(S, s.id), payload);
+    if (!client || !uid || !s || !s.id) return;
+    const { error } = await client
+        .from('subjects')
+        .upsert({ owner: uid, id: s.id, payload: subjectPayload(s), updated_at: new Date().toISOString() }, { onConflict: 'owner,id' });
+    if (error) throw error;
 }
 
 async function deleteSubject(id) {
-    if (!uid || !id) return;
-    const S = await loadFs();
-    await S.deleteDoc(subjectRef(S, id));
+    if (!client || !uid || !id) return;
+    const { error } = await client.from('subjects').delete().eq('owner', uid).eq('id', id);
+    if (error) throw error;
 }
 
 async function clearAllSubjects() {
-    if (!uid) return;
-    const S = await loadFs();
-    const snap = await S.getDocs(S.collection(db, 'users', uid, 'subjects'));
-    const batch = S.writeBatch(db);
-    snap.docs.forEach(function (d) { batch.delete(d.ref); });
-    await batch.commit();
+    if (!client || !uid) return;
+    const { error } = await client.from('subjects').delete().eq('owner', uid);
+    if (error) throw error;
 }
 
-// Nghe realtime toàn bộ môn của tài khoản. Trả hàm hủy đăng ký.
+// Nghe realtime toàn bộ môn của tài khoản.
 export async function initSync(user) {
+    if (!client || !user || !user.uid) return;
     uid = user.uid;
     try { localStorage.setItem('UNI_LAST_UID', uid); } catch (e) { /* bỏ qua */ }
 
-    window.cloudSaveSubject = function (s) {
-        saveSubject(s).catch(function (e) { console.warn('cloudSaveSubject:', e); });
-    };
-    window.cloudDeleteSubject = function (id) {
-        deleteSubject(id).catch(function (e) { console.warn('cloudDeleteSubject:', e); });
-    };
-    window.cloudClearAllSubjects = function () {
-        clearAllSubjects().catch(function (e) { console.warn('cloudClearAllSubjects:', e); });
-    };
+    if (channel) { client.removeChannel(channel); channel = null; }
 
-    const S = await loadFs();
-    if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+    channel = client
+        .channel('subjects-' + uid)
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'subjects',
+            filter: 'owner=eq.' + uid
+        }, function () {
+            refetch().catch(function (e) { console.warn('Lỗi đồng bộ môn:', e); });
+        })
+        .subscribe();
 
-    unsubscribe = S.onSnapshot(S.collection(db, 'users', uid, 'subjects'), function (snap) {
-        const list = snap.docs.map(function (d) {
-            return Object.assign({ id: d.id }, d.data());
-        });
-        if (typeof window.applyCloudSubjects === 'function') window.applyCloudSubjects(list);
-    }, function (err) {
-        console.warn('Lỗi nghe danh sách môn:', err);
-    });
-
-    return unsubscribe;
+    await refetch();
 }
 
 export function teardownSync() {
-    if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+    if (channel && client) { client.removeChannel(channel); channel = null; }
     uid = null;
 }
 
-// Hồ sơ riêng tư users/{uid} (chứa email — chỉ chủ tài khoản đọc được).
+// Hồ sơ công khai: id + tên tài khoản (KHÔNG chứa email).
 export async function ensureUserProfile(user) {
-    if (!user || !user.uid) return;
-    const S = await loadFs();
-    await S.setDoc(S.doc(db, 'users', user.uid), {
-        displayName: user.displayName || null,
-        email: user.email || null,
-        photoURL: user.photoURL || null,
-        updatedAt: S.serverTimestamp()
-    }, { merge: true });
+    if (!client || !user || !user.uid) return;
+    const username = user.username || user.displayName || user.email || ('user_' + String(user.uid).slice(0, 8));
+    const { error } = await client
+        .from('profiles')
+        .upsert({ id: user.uid, username: username }, { onConflict: 'id' });
+    if (error) throw error;
 }
 
 // Cloud của tài khoản có đang trống không.
 export async function cloudSubjectsEmpty(user) {
-    const S = await loadFs();
-    const snap = await S.getDocs(S.collection(db, 'users', user.uid, 'subjects'));
-    return snap.size === 0;
+    if (!client) return true;
+    const { count, error } = await client
+        .from('subjects')
+        .select('id', { count: 'exact', head: true })
+        .eq('owner', user.uid);
+    if (error) throw error;
+    return !count;
 }
 
 // Ghi toàn bộ danh sách cục bộ lên tài khoản.
 export async function migrateLocalToCloud(user, list) {
-    const S = await loadFs();
-    const batch = S.writeBatch(db);
-    (list || []).forEach(function (s) {
-        if (!s || !s.id) return;
-        const payload = Object.assign({}, s);
-        delete payload.id;
-        payload.updatedAt = S.serverTimestamp();
-        batch.set(S.doc(db, 'users', user.uid, 'subjects', s.id), payload);
-    });
-    await batch.commit();
+    if (!client) return;
+    const rows = (list || [])
+        .filter(function (s) { return s && s.id; })
+        .map(function (s) {
+            return { owner: user.uid, id: s.id, payload: subjectPayload(s), updated_at: new Date().toISOString() };
+        });
+    if (!rows.length) return;
+    const { error } = await client.from('subjects').upsert(rows, { onConflict: 'owner,id' });
+    if (error) throw error;
 }
+
+// Cầu nối bắt buộc cho script.js: gán ở cấp module (không đợi tới initSync).
+window.initSync = initSync;
+window.teardownSync = teardownSync;
+window.cloudSubjectsEmpty = cloudSubjectsEmpty;
+window.migrateLocalToCloud = migrateLocalToCloud;
+window.cloudSaveSubject = function (s) {
+    saveSubject(s).catch(function (e) { console.warn('cloudSaveSubject:', e); });
+};
+window.cloudDeleteSubject = function (id) {
+    deleteSubject(id).catch(function (e) { console.warn('cloudDeleteSubject:', e); });
+};
+window.cloudClearAllSubjects = function () {
+    clearAllSubjects().catch(function (e) { console.warn('cloudClearAllSubjects:', e); });
+};
