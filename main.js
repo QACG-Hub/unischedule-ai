@@ -9,13 +9,14 @@ import {
     signOutAccount, requestPasswordReset, recoverWithCode, updatePassword,
     regenerateRecoveryCode, authErrorMessage
 } from './auth.js';
-import { validateSignup, isValidRecoveryCode, GUEST_UID, isGuestUid } from './core.js';
+import { validateSignup, isValidRecoveryCode, GUEST_UID, isGuestUid, shouldMigrateGuest, cacheKeyFor } from './core.js';
 import { initChat, teardownChat } from './chat.js';
 import { ensureUserProfile } from './cloud-sync.js';
 
 let mode = 'login';
 let passwordRecovery = false;
 let guestActive = false;
+let upgradeMode = false;
 const GUEST_KEY = 'UNI_GUEST';
 
 function $(id) { return document.getElementById(id); }
@@ -72,6 +73,16 @@ function setHeaderMode(isGuest) {
 
 function guestUser() {
     return { uid: GUEST_UID, id: GUEST_UID, guest: true, displayName: 'Khách', email: null };
+}
+
+function guestLocalList() {
+    try {
+        const raw = localStorage.getItem(cacheKeyFor(GUEST_UID));
+        const list = raw ? JSON.parse(raw) : [];
+        return Array.isArray(list) ? list : [];
+    } catch (e) {
+        return [];
+    }
 }
 
 function enterGuestUI() {
@@ -162,8 +173,15 @@ function initAuthUI() {
     setMode('login');
     wireRecoveryModal();
 
-    $('authTabLogin').addEventListener('click', function () { showForgotPanel(false); setMode('login'); });
+    $('authTabLogin').addEventListener('click', function () { showForgotPanel(false); setMode('login'); upgradeMode = false; });
     $('authTabRegister').addEventListener('click', function () { showForgotPanel(false); setMode('register'); });
+
+    $('upgradeBtn').addEventListener('click', function () {
+        upgradeMode = true;
+        $('userMenu').classList.add('hidden');
+        setMode('register');
+        showAuthScreen(true);
+    });
 
     $('guestBtn').addEventListener('click', function () {
         guestActive = true;
@@ -196,6 +214,18 @@ function initAuthUI() {
                     password: password
                 });
                 $('authPassword').value = '';
+                const guestList = guestLocalList();
+                if (shouldMigrateGuest({ upgradeMode: upgradeMode, hasGuestData: guestList.length > 0 })) {
+                    try {
+                        await window.migrateLocalToCloud(res.user, guestList);
+                        if (typeof window.refreshCloudSubjects === 'function') window.refreshCloudSubjects();
+                    } catch (e) {
+                        if (typeof window.showToast === 'function') {
+                            window.showToast('Không tải được dữ liệu khách lên tài khoản. Dữ liệu vẫn còn trên máy.', 'error');
+                        }
+                    }
+                }
+                upgradeMode = false;
                 if (res && res.recoveryCode) {
                     $('recoveryCodeText').textContent = res.recoveryCode;
                     if (typeof window.openModal === 'function') window.openModal('recoveryCodeModal');
