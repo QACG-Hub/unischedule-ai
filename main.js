@@ -319,6 +319,7 @@ function initAuthUI() {
     });
 
     $('logoutBtn').addEventListener('click', function () {
+        if (guestActive) { exitGuest(); return; }
         signOutAccount().catch(function (err) { window.alert(authErrorMessage(err)); });
     });
 
