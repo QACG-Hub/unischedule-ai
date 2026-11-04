@@ -57,6 +57,16 @@ test('validateRegistration: email có khoảng trắng bị coi là sai', () => 
   assert.deepEqual(validateRegistration({ name: 'An', email: 'a b@c.com', password: '123456' }), ['email']);
 });
 
+test('directRoomId ổn định với uid chứa ký tự đặc biệt', () => {
+  assert.equal(directRoomId('uid_A!', 'uid_B!'), directRoomId('uid_B!', 'uid_A!'));
+});
+
+test('filterDirectory bỏ qua người không có tên khi query rỗng', () => {
+  const users = [{ displayName: 'An' }, { class: 'KTPM' }];
+  assert.equal(filterDirectory(users, '').length, 2);
+  assert.equal(filterDirectory(users, 'an').length, 1);
+});
+
 test('shouldOfferUpload: đổi tài khoản trên cùng máy thì KHÔNG đề nghị tải lên', () => {
   assert.equal(shouldOfferUpload({ localOwner: 'oldUid', uid: 'newUid', hasLocalData: true, hasCloudData: false }), false);
 });

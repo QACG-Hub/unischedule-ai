@@ -339,6 +339,9 @@
                         <svg class="ico"><use href="#i-chat"/></svg>
                         <span>Trò chuyện</span>
                     </div>
+                    <button type="button" id="btnPickUser" class="btn btn-light btn-sm chat-new-dm">
+                        <svg class="ico"><use href="#i-users"/></svg> Chat riêng
+                    </button>
                     <div id="roomList" class="room-list"></div>
                 </aside>
                 <div id="chatPane" class="chat-pane card">
@@ -471,6 +474,20 @@
                     <button type="submit" class="btn btn-primary">Lưu môn học</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- ============ MODAL: Chọn người chat riêng ============ -->
+    <div id="pickUserModal" class="modal-backdrop hidden">
+        <div class="modal">
+            <div class="modal-head">
+                <h3>Chọn người để chat riêng</h3>
+                <button class="modal-close" onclick="closeModal('pickUserModal')"><svg class="ico"><use href="#i-x"/></svg></button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="pickUserSearch" class="input" placeholder="Tìm theo tên..." autocomplete="off">
+                <div id="pickUserList" class="pick-user-list"></div>
+            </div>
         </div>
     </div>
 

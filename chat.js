@@ -4,7 +4,7 @@
    ========================================================================== */
 
 import { db, SDK_VERSION } from './firebase-init.js';
-import { isPublicRoomId, unreadCount, roomLabel } from './core.js';
+import { isPublicRoomId, unreadCount, roomLabel, directRoomId, filterDirectory } from './core.js';
 
 let fs = null;
 async function loadFs() {
@@ -17,9 +17,11 @@ async function loadFs() {
 let currentUser = null;
 let roomListUnsub = null;
 let messagesUnsub = null;
+let directoryUnsub = null;
 let currentRoomId = null;
 let roomsCache = [];
 let directoryMap = {};      // uid -> { displayName, class, photoURL } (Task 6 điền)
+let directoryUsers = [];    // danh sách phẳng cho modal chọn người
 let lastReadMap = {};       // roomId -> lastReadAt (Task 8 dùng)
 
 function esc(s) {
@@ -178,19 +180,129 @@ export async function markRoomRead(roomId) {
     } catch (e) { /* bỏ qua, không chặn chat */ }
 }
 
+/* ------------------------- Danh bạ người dùng ------------------------- */
+
+// Công khai hồ sơ tối thiểu (KHÔNG email) để người khác chat riêng.
+export async function upsertDirectory(user, extra) {
+    if (!user || !user.uid) return;
+    const S = await loadFs();
+    const payload = {
+        displayName: user.displayName || 'Người dùng',
+        class: (extra && extra.class) || null,
+        photoURL: user.photoURL || null,
+        updatedAt: S.serverTimestamp()
+    };
+    await S.setDoc(S.doc(db, 'directory', user.uid), payload, { merge: true });
+}
+
+export function listDirectory(cb) {
+    const S = fs;
+    if (!S) return function () { };
+    return S.onSnapshot(S.collection(db, 'directory'), function (snap) {
+        const users = snap.docs.map(function (d) {
+            return Object.assign({ uid: d.id }, d.data());
+        });
+        const map = {};
+        users.forEach(function (u) { map[u.uid] = u; });
+        directoryMap = map;
+        directoryUsers = users;
+        // Cập nhật lại nhãn phòng riêng đang hiển thị.
+        renderRoomList(roomsCache);
+        setChatTitle();
+        if (typeof cb === 'function') cb(users);
+    }, function (err) { console.warn('listDirectory:', err); });
+}
+
+/* ------------------------- Chat riêng 1-1 ------------------------- */
+
+export async function openDirect(otherUid) {
+    if (!fs || !currentUser || !otherUid) return;
+    if (otherUid === currentUser.uid) return;
+    const S = fs;
+    const roomId = directRoomId(currentUser.uid, otherUid);
+    const ref = S.doc(db, 'rooms', roomId);
+    const snap = await S.getDoc(ref);
+    if (!snap.exists()) {
+        try {
+            await S.setDoc(ref, {
+                type: 'direct',
+                name: null,
+                members: [currentUser.uid, otherUid],
+                ownerId: null,
+                createdAt: S.serverTimestamp(),
+                updatedAt: S.serverTimestamp(),
+                lastMessage: null
+            });
+        } catch (e) {
+            // Người kia có thể vừa tạo trước — bỏ qua.
+            console.warn('openDirect:', e);
+        }
+    }
+    openRoom(roomId);
+}
+
+/* ------------------------- Modal chọn người ------------------------- */
+
+function renderPickUserList() {
+    const el = document.getElementById('pickUserList');
+    if (!el) return;
+    const search = document.getElementById('pickUserSearch');
+    const q = search ? search.value : '';
+    const uid = currentUser && currentUser.uid;
+    const list = filterDirectory(directoryUsers, q).filter(function (u) { return u.uid !== uid; });
+    el.innerHTML = '';
+    if (!list.length) {
+        el.innerHTML = '<div class="pick-user-empty">Không tìm thấy người dùng nào.</div>';
+        return;
+    }
+    list.forEach(function (u) {
+        const item = document.createElement('div');
+        item.className = 'pick-user-item';
+        item.innerHTML =
+            '<div class="pick-user-name">' + esc(u.displayName || 'Người dùng') + '</div>' +
+            (u.class ? '<div class="pick-user-class">' + esc(u.class) + '</div>' : '');
+        item.addEventListener('click', function () {
+            if (typeof window.closeModal === 'function') window.closeModal('pickUserModal');
+            openDirect(u.uid).catch(function (e) { console.warn('openDirect:', e); });
+        });
+        el.appendChild(item);
+    });
+}
+
+function wireChatUi() {
+    const btn = document.getElementById('btnPickUser');
+    if (btn && !btn.dataset.wired) {
+        btn.dataset.wired = '1';
+        btn.addEventListener('click', function () {
+            const search = document.getElementById('pickUserSearch');
+            if (search) search.value = '';
+            renderPickUserList();
+            if (typeof window.openModal === 'function') window.openModal('pickUserModal');
+        });
+    }
+    const search = document.getElementById('pickUserSearch');
+    if (search && !search.dataset.wired) {
+        search.dataset.wired = '1';
+        search.addEventListener('input', renderPickUserList);
+    }
+}
+
 /* ------------------------- Vòng đời ------------------------- */
 
 export async function initChat(user) {
     currentUser = user;
     await loadFs();
+    wireChatUi();
     await ensurePublicRoom();
     subscribeRoomList(null);
+    directoryUnsub = listDirectory(function () { renderPickUserList(); });
     openRoom('public');
 }
 
 export function teardownChat() {
     if (roomListUnsub) { roomListUnsub(); roomListUnsub = null; }
     if (messagesUnsub) { messagesUnsub(); messagesUnsub = null; }
+    if (directoryUnsub) { directoryUnsub(); directoryUnsub = null; }
     currentUser = null;
     currentRoomId = null;
     roomsCache = [];
