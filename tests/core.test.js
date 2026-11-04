@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {
   directRoomId, cacheKeyFor, shouldOfferUpload, filterDirectory,
   roomLabel, unreadCount, validateRegistration, isPublicRoomId,
-  sortMessagesAsc, legacyCacheAllowed
+  sortMessagesAsc, legacyCacheAllowed,
+  normalizeUsername, isValidUsername, isValidRecoveryCode,
+  looksLikeEmail, validateSignup
 } from '../core.js';
 
 test('directRoomId không phụ thuộc thứ tự uid', () => {
@@ -86,4 +88,37 @@ test('legacyCacheAllowed chỉ khi cache chưa có chủ hoặc đúng chủ', (
   assert.equal(legacyCacheAllowed(undefined, 'u1'), true);
   assert.equal(legacyCacheAllowed('u1', 'u1'), true);
   assert.equal(legacyCacheAllowed('uOld', 'u1'), false);
+});
+
+test('normalizeUsername trim + thường hóa', () => {
+  assert.equal(normalizeUsername('  AnB  '), 'anb');
+  assert.equal(normalizeUsername(null), '');
+});
+
+test('isValidUsername 3..20, chỉ a-z0-9._-', () => {
+  assert.equal(isValidUsername('an_b-99'), true);
+  assert.equal(isValidUsername('ab'), false);
+  assert.equal(isValidUsername('a'.repeat(21)), false);
+  assert.equal(isValidUsername('An B'), false);
+  assert.equal(isValidUsername('ăn'), false);
+});
+
+test('isValidRecoveryCode 12 ký tự A-Z0-9, không phân biệt hoa thường', () => {
+  assert.equal(isValidRecoveryCode('ABCD2345WXYZ'), true);
+  assert.equal(isValidRecoveryCode('abcd2345wxyz'), true);
+  assert.equal(isValidRecoveryCode('ABC'), false);
+  assert.equal(isValidRecoveryCode('ABCD-234-WXYZ'), false);
+});
+
+test('looksLikeEmail nhận diện theo dấu @', () => {
+  assert.equal(looksLikeEmail('an@uni.app'), true);
+  assert.equal(looksLikeEmail('anb'), false);
+});
+
+test('validateSignup trả mảng tên trường lỗi', () => {
+  assert.deepEqual(validateSignup({ username: 'anb', email: 'a@b.com', password: '123456' }), []);
+  assert.deepEqual(
+    validateSignup({ username: 'a', email: 'x', password: '1' }).sort(),
+    ['email', 'password', 'username']
+  );
 });

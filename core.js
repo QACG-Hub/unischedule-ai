@@ -98,3 +98,38 @@ export function sortMessagesAsc(messages) {
 export function legacyCacheAllowed(localOwner, uid) {
     return localOwner === null || localOwner === undefined || localOwner === uid;
 }
+
+/* ------------------------- Tài khoản (Supabase) ------------------------- */
+
+// Chuẩn hoá tên tài khoản: bỏ khoảng trắng đầu/cuối, chuyển chữ thường.
+export function normalizeUsername(username) {
+    return String(username == null ? '' : username).trim().toLowerCase();
+}
+
+// Tên tài khoản hợp lệ: 3–20 ký tự, chỉ a-z 0-9 . _ -
+export function isValidUsername(username) {
+    var u = normalizeUsername(username);
+    return u.length >= 3 && u.length <= 20 && /^[a-z0-9._-]+$/.test(u);
+}
+
+// Mã dự phòng hợp lệ: đúng 12 ký tự A-Z0-9 (không phân biệt hoa/thường khi nhập).
+export function isValidRecoveryCode(code) {
+    return /^[A-Z0-9]{12}$/.test(String(code == null ? '' : code).trim().toUpperCase());
+}
+
+// Người dùng nhập email (đăng nhập trực tiếp) hay tên tài khoản.
+export function looksLikeEmail(value) {
+    return String(value == null ? '' : value).indexOf('@') !== -1;
+}
+
+// Kiểm tra dữ liệu đăng ký Supabase; trả mảng tên trường lỗi (rỗng = hợp lệ).
+export function validateSignup(input) {
+    var errors = [];
+    var username = (input && input.username);
+    var email = String((input && input.email) || '');
+    var password = String((input && input.password) || '');
+    if (!isValidUsername(username)) errors.push('username');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.push('email');
+    if (password.length < 6) errors.push('password');
+    return errors;
+}
