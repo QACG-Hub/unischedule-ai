@@ -7,7 +7,7 @@
 import {
     onAuthUser, onPasswordRecovery, signUpAccount, signInAccount,
     signOutAccount, requestPasswordReset, recoverWithCode, updatePassword,
-    regenerateRecoveryCode, authErrorMessage
+    regenerateRecoveryCode, authErrorMessage, changePassword
 } from './auth.js';
 import { validateSignup, isValidRecoveryCode, GUEST_UID, isGuestUid, shouldMigrateGuest, cacheKeyFor } from './core.js';
 import { initChat, teardownChat } from './chat.js';
@@ -17,6 +17,7 @@ let mode = 'login';
 let passwordRecovery = false;
 let guestActive = false;
 let upgradeMode = false;
+let currentAppUser = null;
 const GUEST_KEY = 'UNI_GUEST';
 
 function $(id) { return document.getElementById(id); }
@@ -111,6 +112,7 @@ function exitGuest() {
 
 function applyUser(user) {
     if (user) {
+        currentAppUser = user;
         guestActive = false;
         try { localStorage.removeItem(GUEST_KEY); } catch (e) { /* bỏ qua */ }
         setHeaderMode(false);
@@ -128,8 +130,10 @@ function applyUser(user) {
         initChat(user).catch(function (err) { console.warn('initChat:', err); });
         ensureUserProfile(user).catch(function (err) { console.warn('ensureUserProfile:', err); });
     } else if (guestActive) {
+        currentAppUser = null;
         enterGuestUI();
     } else {
+        currentAppUser = null;
         showAuthScreen(true);
         showResetScreen(false);
         $('userMenu').classList.add('hidden');
@@ -331,6 +335,35 @@ function initAuthUI() {
             }
         });
     }
+
+    $('changePasswordBtn').addEventListener('click', function () {
+        clearMsg('cpMsg');
+        $('cpOld').value = '';
+        $('cpNew').value = '';
+        if (typeof window.openModal === 'function') window.openModal('changePasswordModal');
+    });
+
+    $('cpClose').addEventListener('click', function () {
+        if (typeof window.closeModal === 'function') window.closeModal('changePasswordModal');
+    });
+
+    $('cpSubmit').addEventListener('click', async function () {
+        clearMsg('cpMsg');
+        const email = currentAppUser && currentAppUser.email ? currentAppUser.email : null;
+        const oldPw = $('cpOld').value;
+        const newPw = $('cpNew').value;
+        if (!oldPw) { showMsg('cpMsg', 'Vui lòng nhập mật khẩu cũ.'); return; }
+        if (newPw.length < 6) { showMsg('cpMsg', 'Mật khẩu mới cần ít nhất 6 ký tự.'); return; }
+        try {
+            await changePassword(email, oldPw, newPw);
+            $('cpOld').value = '';
+            $('cpNew').value = '';
+            if (typeof window.closeModal === 'function') window.closeModal('changePasswordModal');
+            if (typeof window.showToast === 'function') window.showToast('Đã đổi mật khẩu', 'info');
+        } catch (err) {
+            showMsg('cpMsg', authErrorMessage(err));
+        }
+    });
 }
 
 function start() {
