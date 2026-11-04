@@ -73,6 +73,9 @@ Email mặc định của Supabase giới hạn **2 mail/giờ**. Nếu dùng th
 - [ ] Chat phòng chung; chat riêng 1-1; tạo nhóm, thêm/xoá thành viên, đổi tên (chỉ chủ nhóm).
 - [ ] Badge số chưa đọc tăng khi có tin mới ở phòng khác; mở phòng → badge mất.
 - [ ] Mở web bằng `file://` → hiện lỗi và nút đăng nhập bị khoá.
+- [ ] Không đăng nhập: bấm "Dùng tiếp không cần tài khoản" → dùng được, không có tab Trò Chuyện, tải lại vẫn còn dữ liệu.
+- [ ] Khách bấm "Nâng cấp" → đăng ký → dữ liệu local chuyển lên tài khoản.
+- [ ] Đổi mật khẩu: mk cũ sai → báo lỗi; mk cũ đúng → đổi được.
 
 ## Xử lý sự cố
 
