@@ -69,7 +69,7 @@ Tạo `package.json` (không dependency):
   "name": "unischedule-ai",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test tests/" }
+  "scripts": { "test": "node --test tests/*.test.js" }
 }
 ```
 
@@ -144,7 +144,7 @@ test('isPublicRoomId', () => {
 
 - [ ] **Step 3: Chạy test để chắc chắn thất bại**
 
-Run: `cd /public/tkb && node --test tests/`
+Run: `cd /public/tkb && node --test tests/*.test.js`
 Expected: FAIL, `Cannot find module '../core.js'`.
 
 - [ ] **Step 4: Viết `core.js`**
@@ -161,7 +161,7 @@ Tạo các export với chữ ký ở Interfaces. Gợi ý hiện thực:
 
 - [ ] **Step 5: Chạy test để chắc chắn đạt**
 
-Run: `cd /public/tkb && node --test tests/`
+Run: `cd /public/tkb && node --test tests/*.test.js`
 Expected: PASS toàn bộ.
 
 - [ ] **Step 6: Commit**
@@ -277,7 +277,7 @@ test('validateRegistration: email có khoảng trắng bị coi là sai', () => 
 });
 ```
 
-Run: `node --test tests/` → PASS (đã có hàm). Giữ làm chốt hồi quy.
+Run: `node --test tests/*.test.js` → PASS (đã có hàm). Giữ làm chốt hồi quy.
 
 - [ ] **Step 3: Viết `auth.js`**
 
@@ -386,7 +386,7 @@ test('shouldOfferUpload: đổi tài khoản trên cùng máy thì KHÔNG đề 
 });
 ```
 
-Run: `node --test tests/` → PASS.
+Run: `node --test tests/*.test.js` → PASS.
 
 - [ ] **Step 5: Kiểm thủ công — đồng bộ hai thiết bị**
 
@@ -544,7 +544,7 @@ test('directRoomId ổn định với uid chứa ký tự đặc biệt', () => 
 });
 ```
 
-Run: `node --test tests/` → PASS.
+Run: `node --test tests/*.test.js` → PASS.
 
 - [ ] **Step 6: Kiểm thủ công — chat riêng hai chiều**
 
@@ -651,7 +651,7 @@ Expected: đăng nhập, đồng bộ TKB, chat chung/riêng/nhóm đều chạy
 
 - [ ] **Step 6: Chạy toàn bộ test**
 
-Run: `cd /public/tkb && node --test tests/`
+Run: `cd /public/tkb && node --test tests/*.test.js`
 Expected: PASS toàn bộ.
 
 - [ ] **Step 7: Commit**
