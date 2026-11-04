@@ -95,13 +95,19 @@
             </div>
 
             <form id="authForm" class="stack">
-                <div id="authNameWrap" class="hidden">
-                    <label class="label" for="authName">Họ tên</label>
-                    <input type="text" id="authName" class="input" placeholder="VD: Nguyễn Văn A" autocomplete="name">
+                <div id="authLoginFields">
+                    <label class="label" for="authIdentifier">Tên tài khoản hoặc email</label>
+                    <input type="text" id="authIdentifier" class="input" placeholder="VD: nguyenvana" autocomplete="username">
                 </div>
-                <div>
-                    <label class="label" for="authEmail">Email</label>
-                    <input type="email" id="authEmail" class="input" placeholder="ten@vidu.com" autocomplete="email" required>
+                <div id="authRegisterFields" class="stack hidden">
+                    <div>
+                        <label class="label" for="authUsername">Tên tài khoản</label>
+                        <input type="text" id="authUsername" class="input" placeholder="3–20 ký tự: a-z, 0-9, . _ -" autocomplete="username">
+                    </div>
+                    <div>
+                        <label class="label" for="authEmail">Email khôi phục</label>
+                        <input type="email" id="authEmail" class="input" placeholder="ten@vidu.com" autocomplete="email">
+                    </div>
                 </div>
                 <div>
                     <label class="label" for="authPassword">Mật khẩu</label>
@@ -111,11 +117,48 @@
                 <button type="submit" id="authSubmit" class="btn btn-primary btn-block">Đăng nhập</button>
             </form>
 
-            <div class="auth-divider"><span>hoặc</span></div>
+            <button type="button" id="forgotLink" class="auth-link">Quên mật khẩu?</button>
 
-            <button type="button" id="authGoogle" class="btn btn-light btn-block">
-                <svg class="ico"><use href="#i-user"/></svg> Đăng nhập bằng Google
-            </button>
+            <div id="forgotPanel" class="stack hidden">
+                <div>
+                    <label class="label" for="forgotUsername">Tên tài khoản hoặc email</label>
+                    <input type="text" id="forgotUsername" class="input" placeholder="VD: nguyenvana" autocomplete="username">
+                </div>
+                <button type="button" id="forgotSendEmail" class="btn btn-light btn-sm">Gửi link đặt lại qua email</button>
+
+                <div class="auth-divider"><span>hoặc dùng mã dự phòng</span></div>
+
+                <div>
+                    <label class="label" for="forgotCode">Mã dự phòng (12 ký tự)</label>
+                    <input type="text" id="forgotCode" class="input" placeholder="VD: ABCD2345WXYZ" autocomplete="off">
+                </div>
+                <div>
+                    <label class="label" for="forgotNewPassword">Mật khẩu mới</label>
+                    <input type="password" id="forgotNewPassword" class="input" placeholder="Ít nhất 6 ký tự" autocomplete="new-password">
+                </div>
+                <p id="forgotMsg" class="auth-error hidden"></p>
+                <button type="button" id="forgotSubmit" class="btn btn-primary btn-sm">Đặt lại bằng mã</button>
+                <button type="button" id="forgotBack" class="btn btn-light btn-sm">Quay lại đăng nhập</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ Màn hình đặt lại mật khẩu (theo link email) ============ -->
+    <div id="resetScreen" class="auth-screen hidden">
+        <div class="auth-card">
+            <div class="auth-brand">
+                <div class="brand-logo"><svg class="ico"><use href="#i-key"/></svg></div>
+                <h1>Đặt lại mật khẩu</h1>
+                <p>Nhập mật khẩu mới cho tài khoản của bạn</p>
+            </div>
+            <div class="stack">
+                <div>
+                    <label class="label" for="resetNewPassword">Mật khẩu mới</label>
+                    <input type="password" id="resetNewPassword" class="input" placeholder="Ít nhất 6 ký tự" autocomplete="new-password">
+                </div>
+                <p id="resetMsg" class="auth-error hidden"></p>
+                <button type="button" id="resetSubmit" class="btn btn-primary btn-block">Đặt lại mật khẩu</button>
+            </div>
         </div>
     </div>
 
@@ -551,13 +594,31 @@
         </div>
     </div>
 
+    <!-- ============ MODAL: Mã dự phòng ============ -->
+    <div id="recoveryCodeModal" class="modal-backdrop hidden">
+        <div class="modal">
+            <div class="modal-head">
+                <h3>Mã dự phòng của bạn</h3>
+                <button class="modal-close" onclick="closeModal('recoveryCodeModal')"><svg class="ico"><use href="#i-x"/></svg></button>
+            </div>
+            <div class="modal-body">
+                <p class="muted small">Hãy lưu mã này ở nơi an toàn. Bạn sẽ cần nó để khôi phục mật khẩu nếu quên.</p>
+                <div id="recoveryCodeText" class="strong" style="font-size:20px;letter-spacing:2px;text-align:center;margin:12px 0;font-family:monospace"></div>
+                <div class="row">
+                    <button type="button" id="recoveryCodeCopy" class="btn btn-light btn-sm">Sao chép</button>
+                    <button type="button" id="recoveryCodeDone" class="btn btn-primary btn-sm">Tôi đã lưu</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast -->
     <div id="toastContainer" class="toast-wrap"></div>
 
-    <script src="firebase-config.js"></script>
+    <script src="supabase-config.js"></script>
     <script src="script.js" defer></script>
     <script>
-        // Cảnh báo khi mở sai cách bằng file://. Script module (firebase-init.js, main.js)
+        // Cảnh báo khi mở sai cách bằng file://. Script module (supabase-init.js, main.js)
         // KHÔNG chạy được ở file://, nên phải phát hiện bằng script classic này.
         if (location.protocol === 'file:') {
             document.addEventListener('DOMContentLoaded', function () {
@@ -565,18 +626,16 @@
                 var err = document.getElementById('authError');
                 if (screen) screen.classList.remove('hidden');
                 if (err) {
-                    err.textContent = 'Ứng dụng cần chạy qua http(s). Hãy mở bằng server tĩnh (xem docs/firebase-setup.md).';
+                    err.textContent = 'Ứng dụng cần chạy qua http(s). Hãy mở bằng server tĩnh (xem docs/supabase-setup.md).';
                     err.classList.remove('hidden');
                     err.classList.add('warn');
                 }
                 var submit = document.getElementById('authSubmit');
-                var google = document.getElementById('authGoogle');
                 if (submit) submit.disabled = true;
-                if (google) google.disabled = true;
             });
         }
     </script>
-    <script type="module" src="firebase-init.js"></script>
+    <script type="module" src="supabase-init.js"></script>
     <script type="module" src="cloud-sync.js"></script>
     <script type="module" src="chat.js"></script>
     <script type="module" src="main.js"></script>

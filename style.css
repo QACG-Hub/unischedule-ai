@@ -602,6 +602,8 @@ textarea { resize: vertical; }
 .auth-divider span { position: relative; background: #fff; padding: 0 10px; font-size: 11px; color: var(--muted); }
 .auth-error { margin: 0; padding: 9px 11px; border-radius: 10px; background: #fef2f2; color: var(--red); font-size: 12px; }
 .auth-error.warn { background: var(--amber-soft); color: #92400e; }
+.auth-link { background: none; border: none; color: var(--indigo); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px; align-self: flex-end; }
+.auth-link:hover { text-decoration: underline; }
 
 /* ---------- Menu người dùng trên header ---------- */
 .user-menu { display: flex; align-items: center; gap: 8px; }
