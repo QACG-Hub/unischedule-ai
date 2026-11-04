@@ -164,6 +164,23 @@ export async function updatePassword(newPassword) {
     if (error) throw error;
 }
 
+// Đổi mật khẩu: xác minh mật khẩu cũ bằng cách đăng nhập lại rồi cập nhật.
+export async function changePassword(email, oldPassword, newPassword, supabaseClient) {
+    const c = supabaseClient || requireClient();
+    if (!email) {
+        throw Object.assign(new Error('Không xác định được email tài khoản.'), { known: true });
+    }
+    const { error: signErr } = await c.auth.signInWithPassword({
+        email: String(email),
+        password: String(oldPassword || '')
+    });
+    if (signErr) {
+        throw Object.assign(new Error('Mật khẩu cũ không đúng.'), { known: true });
+    }
+    const { error } = await c.auth.updateUser({ password: String(newPassword || '') });
+    if (error) throw error;
+}
+
 export async function regenerateRecoveryCode() {
     const c = requireClient();
     const code = createRecoveryCode();
