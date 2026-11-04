@@ -36,6 +36,7 @@ var subjectsList = [];
 var selectedDate = new Date();
 var selectedImageBase64 = null;
 var ocrParsedData = [];
+var currentUid = null;
 
 /* ------------------------- Tiện ích ------------------------- */
 
@@ -514,7 +515,10 @@ function renderPeriodTable() {
 
 /* ------------------------- Chọn nhiều Thứ ------------------------- */
 
+var thuChipsInitialized = false;
 function initThuChips() {
+    if (thuChipsInitialized) return;
+    thuChipsInitialized = true;
     document.querySelectorAll('#fieldThuGroup .chip').forEach(function (btn) {
         btn.addEventListener('click', function () { btn.classList.toggle('active'); });
     });
@@ -1021,8 +1025,25 @@ function init() {
     renderCurrentView();
 }
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-} else {
-    init();
+/* ------------------------- Điều khiển bởi màn đăng nhập ------------------------- */
+
+function setAppVisible(visible) {
+    var main = document.querySelector('main.page');
+    var tabs = document.querySelector('.tabs');
+    var addBtn = document.getElementById('addSubjectBtn');
+    if (main) main.classList.toggle('hidden', !visible);
+    if (tabs) tabs.classList.toggle('hidden', !visible);
+    if (addBtn) addBtn.classList.toggle('hidden', !visible);
 }
+
+window.startUniSchedule = function (user) {
+    currentUid = user ? user.uid : null;
+    setAppVisible(true);
+    init();
+};
+
+window.stopUniSchedule = function () {
+    currentUid = null;
+    subjectsList = [];
+    setAppVisible(false);
+};

@@ -560,3 +560,51 @@ textarea { resize: vertical; }
     .app-header, .tabs, .modal-backdrop, .toast-wrap, .btn { display: none !important; }
     body { background: #fff; }
 }
+
+/* ---------- Màn hình đăng nhập ---------- */
+.auth-screen {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px 64px;
+}
+.auth-card {
+    width: 100%;
+    max-width: 400px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    padding: 22px;
+}
+.auth-brand { text-align: center; margin-bottom: 16px; }
+.auth-brand .brand-logo { margin: 0 auto 10px; background: var(--indigo); color: #fff; }
+.auth-brand h1 { margin: 0; font-size: 20px; }
+.auth-brand p { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+.auth-tabs { display: flex; gap: 6px; background: var(--soft); border-radius: 12px; padding: 4px; margin-bottom: 16px; }
+.auth-tab {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    border-radius: 9px;
+    background: none;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.auth-tab.active { background: #fff; color: var(--indigo); box-shadow: var(--shadow-sm); }
+.auth-divider { position: relative; text-align: center; margin: 14px 0; }
+.auth-divider::before { content: ""; position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: var(--border); }
+.auth-divider span { position: relative; background: #fff; padding: 0 10px; font-size: 11px; color: var(--muted); }
+.auth-error { margin: 0; padding: 9px 11px; border-radius: 10px; background: #fef2f2; color: var(--red); font-size: 12px; }
+.auth-error.warn { background: var(--amber-soft); color: #92400e; }
+
+/* ---------- Menu người dùng trên header ---------- */
+.user-menu { display: flex; align-items: center; gap: 8px; }
+.user-menu .avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; background: rgba(255, 255, 255, 0.25); }
+.user-menu .user-name { color: #fff; font-size: 13px; font-weight: 600; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 480px) { .user-menu .user-name { display: none; } }

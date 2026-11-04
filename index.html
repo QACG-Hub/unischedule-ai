@@ -55,10 +55,17 @@
                     <p>Thời khóa biểu sinh viên</p>
                 </div>
             </div>
-            <button class="btn btn-glass btn-sm" onclick="openModal('addSubjectModal')">
+            <button id="addSubjectBtn" class="btn btn-glass btn-sm" onclick="openModal('addSubjectModal')">
                 <svg class="ico"><use href="#i-plus"/></svg>
                 <span class="hide-sm">Thêm môn</span>
             </button>
+            <div id="userMenu" class="user-menu hidden">
+                <img id="userAvatar" class="avatar" alt="" referrerpolicy="no-referrer">
+                <span id="userName" class="user-name"></span>
+                <button id="logoutBtn" class="btn btn-glass btn-sm" title="Đăng xuất">
+                    <svg class="ico"><use href="#i-x"/></svg>
+                </button>
+            </div>
         </div>
 
         <nav class="tabs">
@@ -69,6 +76,45 @@
             <button class="tab-nav" id="btnTabList" onclick="switchTab('listTab')"><svg class="ico"><use href="#i-list"/></svg><span>Quản Lý Môn</span></button>
         </nav>
     </header>
+
+    <!-- ============ Màn hình đăng nhập ============ -->
+    <div id="authScreen" class="auth-screen hidden">
+        <div class="auth-card">
+            <div class="auth-brand">
+                <div class="brand-logo"><svg class="ico"><use href="#i-calendar"/></svg></div>
+                <h1>UniSchedule AI</h1>
+                <p>Đăng nhập để đồng bộ thời khóa biểu và trò chuyện</p>
+            </div>
+
+            <div class="auth-tabs">
+                <button type="button" id="authTabLogin" class="auth-tab active">Đăng nhập</button>
+                <button type="button" id="authTabRegister" class="auth-tab">Đăng ký</button>
+            </div>
+
+            <form id="authForm" class="stack">
+                <div id="authNameWrap" class="hidden">
+                    <label class="label" for="authName">Họ tên</label>
+                    <input type="text" id="authName" class="input" placeholder="VD: Nguyễn Văn A" autocomplete="name">
+                </div>
+                <div>
+                    <label class="label" for="authEmail">Email</label>
+                    <input type="email" id="authEmail" class="input" placeholder="ten@vidu.com" autocomplete="email" required>
+                </div>
+                <div>
+                    <label class="label" for="authPassword">Mật khẩu</label>
+                    <input type="password" id="authPassword" class="input" placeholder="Ít nhất 6 ký tự" autocomplete="current-password" required>
+                </div>
+                <p id="authError" class="auth-error hidden"></p>
+                <button type="submit" id="authSubmit" class="btn btn-primary btn-block">Đăng nhập</button>
+            </form>
+
+            <div class="auth-divider"><span>hoặc</span></div>
+
+            <button type="button" id="authGoogle" class="btn btn-light btn-block">
+                <svg class="ico"><use href="#i-user"/></svg> Đăng nhập bằng Google
+            </button>
+        </div>
+    </div>
 
     <main class="page">
 
@@ -405,6 +451,7 @@
 
     <script src="firebase-config.js"></script>
     <script type="module" src="firebase-init.js"></script>
+    <script type="module" src="main.js"></script>
     <script src="script.js" defer></script>
 </body>
 </html>

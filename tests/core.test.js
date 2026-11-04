@@ -52,3 +52,7 @@ test('isPublicRoomId', () => {
   assert.equal(isPublicRoomId('public'), true);
   assert.equal(isPublicRoomId('dm_a_b'), false);
 });
+
+test('validateRegistration: email có khoảng trắng bị coi là sai', () => {
+  assert.deepEqual(validateRegistration({ name: 'An', email: 'a b@c.com', password: '123456' }), ['email']);
+});
