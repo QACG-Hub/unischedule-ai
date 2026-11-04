@@ -141,9 +141,14 @@ function buoiBadgeClass(buoi) {
 
 /* ------------------------- Lưu trữ ------------------------- */
 
+function storageKeyFor(uid) {
+    if (typeof window.cacheKeyFor === 'function') return window.cacheKeyFor(uid);
+    return uid ? 'uni_schedule_cache_v1__' + uid : STORAGE_KEY;
+}
+
 function saveToLocalStorage() {
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(subjectsList));
+        localStorage.setItem(storageKeyFor(currentUid), JSON.stringify(subjectsList));
     } catch (e) {
         console.warn('Lỗi lưu localStorage:', e);
     }
@@ -151,8 +156,14 @@ function saveToLocalStorage() {
 
 function loadFromLocalStorage() {
     try {
-        var raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) subjectsList = JSON.parse(raw);
+        var raw = currentUid ? localStorage.getItem(storageKeyFor(currentUid)) : null;
+        if (raw) {
+            subjectsList = JSON.parse(raw);
+        } else {
+            // Lần đầu trên máy này: đọc khóa cũ (chưa có chủ) làm nguồn để đề nghị tải lên cloud.
+            var legacy = localStorage.getItem(STORAGE_KEY);
+            subjectsList = legacy ? JSON.parse(legacy) : [];
+        }
         // Tương thích dữ liệu cũ: gộp trường "sdt" vào "ghiChu"
         subjectsList.forEach(function (s) {
             if (s.sdt) {
@@ -164,6 +175,13 @@ function loadFromLocalStorage() {
         console.warn('Lỗi đọc localStorage:', e);
     }
 }
+
+// Firestore là nguồn sự thật: cập nhật danh sách từ cloud rồi vẽ lại.
+window.applyCloudSubjects = function (list) {
+    subjectsList = Array.isArray(list) ? list : [];
+    saveToLocalStorage();
+    renderCurrentView();
+};
 
 /* ------------------------- Dữ liệu mẫu ------------------------- */
 
@@ -1040,10 +1058,52 @@ window.startUniSchedule = function (user) {
     currentUid = user ? user.uid : null;
     setAppVisible(true);
     init();
+    if (currentUid) setupCloudSync(user);
 };
+
+// Quyết định có nên mời người dùng tải TKB cục bộ lên tài khoản rồi mở đồng bộ.
+function setupCloudSync(user) {
+    if (typeof window.initSync !== 'function') return;
+
+    var localList = subjectsList.slice();
+    var localOwner = null;
+    try { localOwner = localStorage.getItem('UNI_LAST_UID'); } catch (e) { /* bỏ qua */ }
+    // Đánh dấu chủ sở hữu cache NGAY (không xoá khi đăng xuất) để máy dùng chung không lộ dữ liệu.
+    try { localStorage.setItem('UNI_LAST_UID', user.uid); } catch (e) { /* bỏ qua */ }
+
+    function proceed() { window.initSync(user); }
+
+    if (!localList.length || typeof window.cloudSubjectsEmpty !== 'function') {
+        proceed();
+        return;
+    }
+
+    window.cloudSubjectsEmpty(user).then(function (empty) {
+        var eligible = typeof window.shouldOfferUpload === 'function' && window.shouldOfferUpload({
+            localOwner: localOwner,
+            uid: user.uid,
+            hasLocalData: localList.length > 0,
+            hasCloudData: !empty
+        });
+        if (!eligible) { proceed(); return; }
+
+        if (window.confirm('Bạn có ' + localList.length + ' môn học lưu trên máy này. Tải lên tài khoản của bạn?')) {
+            window.migrateLocalToCloud(user, localList).then(proceed).catch(function (e) {
+                console.warn('Lỗi tải TKB lên cloud:', e);
+                proceed();
+            });
+        } else {
+            showToast('Giữ dữ liệu trên máy. Đồng bộ cloud tạm tắt cho phiên này.', 'info');
+        }
+    }).catch(function (e) {
+        console.warn('Lỗi kiểm tra cloud:', e);
+        proceed();
+    });
+}
 
 window.stopUniSchedule = function () {
     currentUid = null;
     subjectsList = [];
     setAppVisible(false);
+    if (typeof window.teardownSync === 'function') window.teardownSync();
 };

@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Hồ sơ riêng tư (chứa email) — chỉ chủ tài khoản đọc/ghi.
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      // Thời khóa biểu — chỉ chủ tài khoản.
+      match /subjects/{subjectId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      // Mốc đã đọc cho chat — chỉ chủ tài khoản.
+      match /reads/{roomId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // Danh bạ công khai cho chat: KHÔNG chứa email.
+    match /directory/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // (Task 6 sẽ bổ sung rooms/ và rooms/{id}/messages/.)
+  }
+}

@@ -56,3 +56,7 @@ test('isPublicRoomId', () => {
 test('validateRegistration: email có khoảng trắng bị coi là sai', () => {
   assert.deepEqual(validateRegistration({ name: 'An', email: 'a b@c.com', password: '123456' }), ['email']);
 });
+
+test('shouldOfferUpload: đổi tài khoản trên cùng máy thì KHÔNG đề nghị tải lên', () => {
+  assert.equal(shouldOfferUpload({ localOwner: 'oldUid', uid: 'newUid', hasLocalData: true, hasCloudData: false }), false);
+});
