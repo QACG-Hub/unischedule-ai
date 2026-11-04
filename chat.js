@@ -301,21 +301,17 @@ export async function openDirect(otherUid) {
 
     const { data: existing } = await client.from('rooms').select('id').eq('id', roomId).maybeSingle();
     if (!existing) {
+        // Người tạo phòng thành chủ và thêm CẢ HAI thành viên.
+        // Policy room_members_insert chỉ cho chủ phòng chèn (chống tự gia nhập phòng người khác).
         const { error: insErr } = await client.from('rooms').insert({
             id: roomId, type: 'direct', name: null, owner: uid
         });
         if (insErr) console.warn('openDirect(room):', insErr);
-        // Chỉ người tạo (chủ phòng) thêm được cả hai thành viên.
         const { error: memErr } = await client.from('room_members').upsert(
             [{ room_id: roomId, user_id: uid }, { room_id: roomId, user_id: otherUid }],
             { onConflict: 'room_id,user_id', ignoreDuplicates: true }
         );
         if (memErr) console.warn('openDirect(members):', memErr);
-    } else {
-        await client.from('room_members').upsert(
-            { room_id: roomId, user_id: uid },
-            { onConflict: 'room_id,user_id', ignoreDuplicates: true }
-        );
     }
 
     if (roomListRefresh) await roomListRefresh().catch(logErr);

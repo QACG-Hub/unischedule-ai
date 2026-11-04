@@ -6,7 +6,7 @@
    ========================================================================== */
 
 import { client } from './supabase-init.js';
-import { cacheKeyFor, shouldOfferUpload, legacyCacheAllowed } from './core.js';
+import { cacheKeyFor, shouldOfferUpload, legacyCacheAllowed, profileUsername } from './core.js';
 
 // Cầu nối cho script.js (classic script, không import ES module được).
 window.cacheKeyFor = cacheKeyFor;
@@ -90,7 +90,7 @@ export function teardownSync() {
 // Hồ sơ công khai: id + tên tài khoản (KHÔNG chứa email).
 export async function ensureUserProfile(user) {
     if (!client || !user || !user.uid) return;
-    const username = user.username || user.displayName || user.email || ('user_' + String(user.uid).slice(0, 8));
+    const username = profileUsername(user);
     const { error } = await client
         .from('profiles')
         .upsert({ id: user.uid, username: username }, { onConflict: 'id' });

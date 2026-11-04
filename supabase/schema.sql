@@ -300,7 +300,7 @@ create policy room_members_select on public.room_members
 drop policy if exists room_members_insert on public.room_members;
 create policy room_members_insert on public.room_members
     for insert to authenticated
-    with check (public.owns_room(room_id) or user_id = auth.uid());
+    with check (public.owns_room(room_id));
 
 drop policy if exists room_members_delete on public.room_members;
 create policy room_members_delete on public.room_members
@@ -326,6 +326,40 @@ create policy reads_all on public.reads
     with check (user_id = auth.uid());
 
 -- ---------------------------------------------------------------------------
+-- Tự tạo hồ sơ khi tài khoản mới được tạo (không phụ thuộc trình duyệt)
+-- Đọc username từ metadata lúc đăng ký; nếu thiếu/không hợp lệ dùng tên tạm.
+-- Nếu username trùng (đua đăng ký), chèn sẽ vi phạm unique → đăng ký báo lỗi
+-- thay vì để tài khoản kẹt không có hồ sơ.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    uname text;
+begin
+    uname := lower(btrim(coalesce(new.raw_user_meta_data->>'username', '')));
+    if uname !~ '^[a-z0-9._-]{3,20}$' then
+        uname := 'user_' || substr(new.id::text, 1, 8);
+    end if;
+    insert into public.profiles (id, username)
+    values (new.id, uname)
+    on conflict (id) do nothing;
+    return new;
+end;
+$$;
+
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+    after insert on auth.users
+    for each row execute function public.handle_new_user();
+
+-- ---------------------------------------------------------------------------
 -- Realtime: đưa các bảng cần theo dõi vào publication (idempotent)
 -- ---------------------------------------------------------------------------
 
@@ -333,7 +367,7 @@ do $$
 declare
     t text;
 begin
-    foreach t in array array['rooms', 'room_members', 'messages', 'reads', 'subjects'] loop
+    foreach t in array array['rooms', 'room_members', 'messages', 'reads', 'subjects', 'profiles'] loop
         if not exists (
             select 1 from pg_publication_tables
             where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t

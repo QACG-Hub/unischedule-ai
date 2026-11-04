@@ -35,15 +35,23 @@ if (g.location && g.location.protocol === 'file:') {
     win.supabaseReady = false;
     console.error('[UniSchedule] Chưa điền cấu hình Supabase trong supabase-config.js.');
 } else {
-    const mod = await import(SDK_CDN);
-    client = mod.createClient(config.url, config.anonKey, {
-        auth: {
-            persistSession: true,
-            autoRefreshToken: true,
-            detectSessionInUrl: true
-        }
-    });
-    win.supabaseError = null;
-    win.supabaseReady = true;
-    console.info('[UniSchedule] Supabase đã sẵn sàng.');
+    try {
+        const mod = await import(SDK_CDN);
+        client = mod.createClient(config.url, config.anonKey, {
+            auth: {
+                persistSession: true,
+                autoRefreshToken: true,
+                detectSessionInUrl: true
+            }
+        });
+        win.supabaseError = null;
+        win.supabaseReady = true;
+        console.info('[UniSchedule] Supabase đã sẵn sàng.');
+    } catch (e) {
+        client = null;
+        win.supabaseError = 'sdk-unavailable';
+        win.supabaseReady = false;
+        console.error('[UniSchedule] Không nạp được thư viện Supabase (mất mạng/CDN?). ' +
+            'Kiểm tra kết nối rồi tải lại trang.', e);
+    }
 }

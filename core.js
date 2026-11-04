@@ -133,3 +133,15 @@ export function validateSignup(input) {
     if (password.length < 6) errors.push('password');
     return errors;
 }
+
+// Tên tài khoản để lưu vào bảng công khai `profiles`: ưu tiên username/displayName
+// hợp lệ; TUYỆT ĐỐI không dùng email (tránh lộ email ra bảng công khai).
+export function profileUsername(user) {
+    var u = user || {};
+    var candidates = [u.username, u.displayName];
+    for (var i = 0; i < candidates.length; i++) {
+        if (isValidUsername(candidates[i])) return normalizeUsername(candidates[i]);
+    }
+    var uid = String(u.uid || u.id || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toLowerCase();
+    return 'user_' + (uid || 'unknown');
+}

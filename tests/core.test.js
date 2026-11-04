@@ -5,7 +5,7 @@ import {
   roomLabel, unreadCount, validateRegistration, isPublicRoomId,
   sortMessagesAsc, legacyCacheAllowed,
   normalizeUsername, isValidUsername, isValidRecoveryCode,
-  looksLikeEmail, validateSignup
+  looksLikeEmail, validateSignup, profileUsername
 } from '../core.js';
 
 test('directRoomId không phụ thuộc thứ tự uid', () => {
@@ -121,4 +121,12 @@ test('validateSignup trả mảng tên trường lỗi', () => {
     validateSignup({ username: 'a', email: 'x', password: '1' }).sort(),
     ['email', 'password', 'username']
   );
+});
+
+test('profileUsername: ưu tiên username/displayName hợp lệ, KHÔNG bao giờ lộ email', () => {
+  assert.equal(profileUsername({ uid: 'u1', username: 'anb' }), 'anb');
+  assert.equal(profileUsername({ uid: 'u1', displayName: 'AnB' }), 'anb');
+  assert.equal(profileUsername({ uid: 'AbC12345-x', displayName: 'a@b.com' }), 'user_abc12345');
+  assert.equal(profileUsername({ uid: 'u1', displayName: 'a@b.com' }).indexOf('@'), -1);
+  assert.equal(profileUsername(null).indexOf('@'), -1);
 });

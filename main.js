@@ -7,7 +7,7 @@
 import {
     onAuthUser, onPasswordRecovery, signUpAccount, signInAccount,
     signOutAccount, requestPasswordReset, recoverWithCode, updatePassword,
-    authErrorMessage
+    regenerateRecoveryCode, authErrorMessage
 } from './auth.js';
 import { validateSignup, isValidRecoveryCode } from './core.js';
 import { initChat, teardownChat } from './chat.js';
@@ -231,6 +231,20 @@ function initAuthUI() {
     $('logoutBtn').addEventListener('click', function () {
         signOutAccount().catch(function (err) { window.alert(authErrorMessage(err)); });
     });
+
+    const recoveryBtn = $('recoveryBtn');
+    if (recoveryBtn) {
+        recoveryBtn.addEventListener('click', async function () {
+            if (!window.confirm('Tạo mã dự phòng mới? Mã cũ sẽ không còn dùng được.')) return;
+            try {
+                const code = await regenerateRecoveryCode();
+                $('recoveryCodeText').textContent = code;
+                if (typeof window.openModal === 'function') window.openModal('recoveryCodeModal');
+            } catch (err) {
+                window.alert(authErrorMessage(err));
+            }
+        });
+    }
 }
 
 function start() {
@@ -239,7 +253,9 @@ function start() {
         setMode('login');
         const msg = window.supabaseError === 'file-protocol'
             ? 'Ứng dụng cần chạy qua http(s). Hãy mở bằng server tĩnh (xem docs/supabase-setup.md).'
-            : 'Chưa cấu hình Supabase. Hãy điền supabase-config.js (xem docs/supabase-setup.md).';
+            : (window.supabaseError === 'sdk-unavailable'
+                ? 'Không tải được thư viện Supabase. Kiểm tra kết nối mạng rồi tải lại trang.'
+                : 'Chưa cấu hình Supabase. Hãy điền supabase-config.js (xem docs/supabase-setup.md).');
         showMsg('authError', msg, true);
         $('authSubmit').disabled = true;
         if (typeof window.stopUniSchedule === 'function') window.stopUniSchedule();
