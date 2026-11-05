@@ -196,6 +196,7 @@ export function openRoom(roomId) {
     // Đồng bộ lại trạng thái chặn mỗi lần mở phòng (dự phòng khi realtime lỡ sự kiện).
     refreshBlocks().catch(logErr);
     currentRoomId = roomId;
+    currentMessages = [];   // không dùng lại tin của phòng vừa rời (mốc xoá an toàn)
     unreadByRoom[roomId] = 0;
     setChatTitle();
     updateChatMenuBtn();
@@ -203,6 +204,8 @@ export function openRoom(roomId) {
 
     if (messagesUnsub) { messagesUnsub(); messagesUnsub = null; }
     messagesUnsub = subscribeMessages(roomId, function (msgs) {
+        // Bỏ qua callback của phòng cũ nếu người dùng đã chuyển phòng.
+        if (roomId !== currentRoomId) return;
         renderMessages(msgs);
         markRoomRead(roomId);
     });
@@ -210,7 +213,7 @@ export function openRoom(roomId) {
 
 export async function sendMessage(roomId, text) {
     text = String(text == null ? '' : text).trim();
-    if (!text || !client || !currentUser) return;
+    if (!text || !client || !currentUser) return false;
     const senderName = currentUser.displayName || currentUser.email || 'Người dùng';
     const { error } = await client.from('messages').insert({
         room_id: roomId,
@@ -221,7 +224,7 @@ export async function sendMessage(roomId, text) {
     if (error) {
         console.warn('sendMessage:', error);
         if (typeof window.showToast === 'function') window.showToast('Không gửi được tin nhắn (có thể do đang chặn nhau).', 'error');
-        return;
+        return false;
     }
     const { error: updErr } = await client.from('rooms').update({
         last_message_text: text,
@@ -231,6 +234,7 @@ export async function sendMessage(roomId, text) {
     }).eq('id', roomId);
     if (updErr) console.warn('sendMessage(room):', updErr);
     if (roomListRefresh) roomListRefresh().catch(logErr);
+    return true;
 }
 
 export async function markRoomRead(roomId) {
@@ -365,6 +369,10 @@ function subscribeBlocks() {
 
 export async function blockUser(uid) {
     if (!client || !currentUser || !uid || uid === currentUser.uid) return;
+    if (myBlockedMap[uid]) {
+        if (typeof window.showToast === 'function') window.showToast('Bạn đã chặn người này.', 'info');
+        return;
+    }
     const { error } = await client.from('blocks').insert({ blocker: currentUser.uid, blocked: uid });
     if (error && error.code !== '23505') {
         console.warn('blockUser:', error);
@@ -377,6 +385,10 @@ export async function blockUser(uid) {
 
 export async function unblockUser(uid) {
     if (!client || !currentUser || !uid) return;
+    if (!myBlockedMap[uid]) {
+        if (typeof window.showToast === 'function') window.showToast('Người này chưa bị bạn chặn.', 'info');
+        return;
+    }
     const { error } = await client.from('blocks').delete()
         .eq('blocker', currentUser.uid).eq('blocked', uid);
     if (error) {
@@ -449,13 +461,21 @@ export async function openDirect(otherUid) {
         const { error: insErr } = await client.from('rooms').insert(
             { id: roomId, type: 'direct', name: null, owner: uid }
         );
-        if (insErr && insErr.code !== '23505') console.warn('openDirect(room):', insErr);
+        if (insErr && insErr.code !== '23505') {
+            console.warn('openDirect(room):', insErr);
+            if (typeof window.showToast === 'function') window.showToast('Không mở được cuộc trò chuyện.', 'error');
+            return;
+        }
         const { error: memErr } = await client.from('room_members').upsert(
             [{ room_id: roomId, user_id: uid, status: 'active' },
              { room_id: roomId, user_id: otherUid, status: 'active' }],
             { onConflict: 'room_id,user_id', ignoreDuplicates: true }
         );
-        if (memErr) console.warn('openDirect(members):', memErr);
+        if (memErr) {
+            console.warn('openDirect(members):', memErr);
+            if (typeof window.showToast === 'function') window.showToast('Không thể nhắn tin cho người này (có thể do đang chặn nhau).', 'error');
+            return;
+        }
     }
 
     if (roomListRefresh) await roomListRefresh().catch(logErr);
@@ -674,7 +694,16 @@ export async function createGroup(name, memberUids) {
         return { room_id: roomId, user_id: m, status: m === uid ? 'active' : 'pending' };
     });
     const { error: memErr } = await client.from('room_members').upsert(rows, { onConflict: 'room_id,user_id', ignoreDuplicates: true });
-    if (memErr) console.warn('createGroup(members):', memErr);
+    if (memErr) {
+        console.warn('createGroup(members):', memErr);
+        // Một người bị chặn làm cả lệnh fail (kể cả dòng của chủ) → nhóm rỗng
+        // không dùng được. Xoá phòng vừa tạo (policy cho chủ xoá group) rồi báo lỗi.
+        const { error: delErr } = await client.from('rooms').delete().eq('id', roomId);
+        if (delErr) console.warn('createGroup(rollback):', delErr);
+        if (typeof window.showToast === 'function') window.showToast('Không tạo được nhóm (có thể do đang chặn nhau).', 'error');
+        if (roomListRefresh) roomListRefresh().catch(logErr);
+        return null;
+    }
 
     if (roomListRefresh) await roomListRefresh().catch(logErr);
     openRoom(roomId);
@@ -726,7 +755,15 @@ export async function acceptGroupInvite(roomId) {
         .eq('user_id', currentUser.uid);
     if (error) {
         console.warn('acceptGroupInvite:', error);
-        if (typeof window.showToast === 'function') window.showToast('Không thể đồng ý lời mời này (có thể do đang chặn nhau).', 'error');
+        // Bị chặn với chủ phòng → RLS chặn update vĩnh viễn. Xoá dòng pending của
+        // mình (policy cho phép) để lời mời không kẹt lại trong danh sách.
+        if (error.code === '42501') {
+            const { error: delErr } = await client.from('room_members')
+                .delete().eq('room_id', roomId).eq('user_id', currentUser.uid);
+            if (delErr) console.warn('acceptGroupInvite(cleanup):', delErr);
+        }
+        if (typeof window.showToast === 'function') window.showToast('Không thể tham gia nhóm này (có thể do đang chặn nhau).', 'error');
+        if (roomListRefresh) roomListRefresh().catch(logErr);
         return;
     }
     if (roomListRefresh) await roomListRefresh().catch(logErr);
@@ -1164,9 +1201,15 @@ if (typeof document !== 'undefined') {
             const input = document.getElementById('messageInput');
             const text = input ? input.value : '';
             if (input) input.value = '';
-            if (currentRoomId) sendMessage(currentRoomId, text).catch(function (err) {
-                console.warn('sendMessage:', err);
-            });
+            if (currentRoomId) {
+                sendMessage(currentRoomId, text).then(function (ok) {
+                    // Gửi lỗi: khôi phục nội dung nếu người dùng chưa gõ gì mới.
+                    if (!ok && input && input.value === '') input.value = text;
+                }).catch(function (err) {
+                    console.warn('sendMessage:', err);
+                    if (input && input.value === '') input.value = text;
+                });
+            }
         }
     });
 }

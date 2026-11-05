@@ -96,6 +96,7 @@ create index if not exists messages_room_created_idx on public.messages (room_id
 create index if not exists room_members_user_idx on public.room_members (user_id);
 create index if not exists subjects_owner_idx on public.subjects (owner);
 create index if not exists reads_user_idx on public.reads (user_id);
+create index if not exists blocks_blocked_idx on public.blocks (blocked);
 
 -- ---------------------------------------------------------------------------
 -- Quyền ở mức bảng (RLS vẫn là lớp kiểm soát chính)
@@ -188,6 +189,7 @@ as $$
 $$;
 
 -- Chủ phòng (SECURITY DEFINER để policy đọc được mà không phụ thuộc RLS của rooms).
+-- KHÔNG cấp EXECUTE cho authenticated: chỉ dùng nội bộ trong hàm/policy tự-scope.
 create or replace function public.room_owner(p_room_id text)
 returns uuid
 language sql
@@ -196,6 +198,32 @@ set search_path = public
 stable
 as $$
     select owner from public.rooms where id = p_room_id;
+$$;
+
+-- Helper tự-scope: "tôi có chặn nhau với người này không?" (cả hai chiều).
+-- Nhờ vậy client không gọi được is_blocked với uid tuỳ ý để dò quan hệ chặn.
+create or replace function public.i_blocked(other uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+    select public.is_blocked(auth.uid(), other);
+$$;
+
+-- Tự-scope: "tôi có chặn nhau với CHỦ phòng này không?". Chỉ trả lời cho người
+-- đang ở trong phòng (thành viên hoặc đang được mời) để không dò được chủ phòng
+-- của phòng bất kỳ.
+create or replace function public.i_blocked_owner_of(p_room_id text)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+    select (public.is_room_member(p_room_id) or public.is_invited(p_room_id))
+       and public.is_blocked(auth.uid(), public.room_owner(p_room_id));
 $$;
 
 -- Gửi được tin vào phòng? Đọc được phòng VÀ nếu là chat riêng thì không chặn nhau.
@@ -267,10 +295,15 @@ grant execute on function public.is_room_member(text) to authenticated;
 grant execute on function public.can_read_room(text) to authenticated;
 grant execute on function public.is_invited(text) to authenticated;
 grant execute on function public.owns_room(text) to authenticated;
-grant execute on function public.is_blocked(uuid, uuid) to authenticated;
-grant execute on function public.room_owner(text) to authenticated;
+grant execute on function public.i_blocked(uuid) to authenticated;
+grant execute on function public.i_blocked_owner_of(text) to authenticated;
 grant execute on function public.can_send_to_room(text) to authenticated;
 grant execute on function public.is_username_available(text) to anon, authenticated;
+
+-- is_blocked/room_owner chỉ dùng nội bộ (SECURITY DEFINER) — không cho client
+-- gọi trực tiếp để tránh dò đồ thị chặn / chủ phòng của người khác.
+revoke execute on function public.is_blocked(uuid, uuid) from public, anon, authenticated;
+revoke execute on function public.room_owner(text) from public, anon, authenticated;
 
 revoke execute on function public.set_my_recovery_code(text) from public;
 grant execute on function public.set_my_recovery_code(text) to authenticated;
@@ -440,7 +473,7 @@ create policy room_members_insert on public.room_members
     with check (
         public.owns_room(room_id)
         and status in ('active', 'pending')
-        and not public.is_blocked(auth.uid(), user_id)
+        and not public.i_blocked(user_id)
     );
 
 -- Người được mời tự chuyển dòng của mình sang 'active'; chủ phòng cũng đổi được.
@@ -450,7 +483,8 @@ create policy room_members_update on public.room_members
     using (user_id = auth.uid() or public.owns_room(room_id))
     with check (
         (user_id = auth.uid() or public.owns_room(room_id))
-        and not public.is_blocked(auth.uid(), public.room_owner(room_id))
+        and not public.i_blocked_owner_of(room_id)
+        and not public.i_blocked(user_id)
     );
 
 drop policy if exists room_members_delete on public.room_members;

@@ -70,6 +70,7 @@ function setHeaderMode(isGuest) {
     $('upgradeBtn').classList.toggle('hidden', !isGuest);
     $('recoveryBtn').classList.toggle('hidden', isGuest);
     $('changePasswordBtn').classList.toggle('hidden', isGuest);
+    $('blockedListBtn').classList.toggle('hidden', isGuest);
 }
 
 function guestUser() {
