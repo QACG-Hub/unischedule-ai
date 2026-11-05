@@ -8,7 +8,7 @@ import { client } from './supabase-init.js';
 import {
     isPublicRoomId, unreadCount, roomLabel, directRoomId,
     filterDirectory, sortMessagesAsc, partitionRooms, visibleMessages, blockTimes,
-    blockedByMe, newestMessageTime, isRoomHidden
+    blockedByMe, newestMessageTime, filterVisibleRooms, roomPreview
 } from './core.js';
 
 let currentUser = null;
@@ -1108,12 +1108,14 @@ function renderRoomList(list) {
     });
 
     const previewAt = function (room) {
-        if (previewByRoom[room.id] !== undefined) return previewByRoom[room.id];
-        return room.lastMessage;
+        return roomPreview(room, {
+            preview: previewByRoom[room.id],
+            clearedAt: clearedMap[room.id] == null ? null : clearedMap[room.id],
+            blocked: blockedMap,
+            selfUid: uid
+        });
     };
-    const activeSorted = split.active.filter(function (room) {
-        return !isRoomHidden(room, clearedMap[room.id] == null ? null : clearedMap[room.id], previewAt(room));
-    }).sort(function (a, b) {
+    const activeSorted = filterVisibleRooms(split.active, clearedMap, previewByRoom, currentRoomId).sort(function (a, b) {
         const pa = previewAt(a);
         const pb = previewAt(b);
         return ((pb && pb.createdAt) || 0) - ((pa && pa.createdAt) || 0);

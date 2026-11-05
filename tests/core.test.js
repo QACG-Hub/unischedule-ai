@@ -5,6 +5,7 @@ import {
   roomLabel, unreadCount, validateRegistration, isPublicRoomId,
   sortMessagesAsc, legacyCacheAllowed, partitionRooms,
   visibleMessages, blockTimes, blockedByMe, newestMessageTime, isRoomHidden,
+  filterVisibleRooms, roomPreview,
   normalizeUsername, isValidUsername, isValidRecoveryCode,
   looksLikeEmail, validateSignup, profileUsername,
   GUEST_UID, isGuestUid, shouldMigrateGuest
@@ -252,4 +253,43 @@ test('isRoomHidden không bao giờ ẩn kênh chung', () => {
 test('isRoomHidden chịu dữ liệu rỗng/không hợp lệ', () => {
   assert.equal(isRoomHidden(null, 200, null), false);
   assert.equal(isRoomHidden(undefined, 200, null), false);
+});
+
+test('filterVisibleRooms bỏ phòng đã xoá lịch sử hết tin, giữ phòng bình thường/kênh chung', () => {
+  const rooms = [
+    { id: 'a', type: 'direct' },
+    { id: 'b', type: 'group' },
+    { id: 'public', type: 'public' }
+  ];
+  const out = filterVisibleRooms(rooms, { a: 200 }, { a: null, b: null }, null).map((r) => r.id);
+  assert.deepEqual(out, ['b', 'public']);
+});
+
+test('filterVisibleRooms luôn giữ phòng đang mở dù đã xoá lịch sử', () => {
+  const out = filterVisibleRooms([{ id: 'a', type: 'direct' }], { a: 200 }, { a: null }, 'a');
+  assert.deepEqual(out.map((r) => r.id), ['a']);
+});
+
+test('filterVisibleRooms coi preview chưa tính của phòng đã xoá là rỗng (không hiện chớp nhoáng)', () => {
+  const out = filterVisibleRooms([{ id: 'a', type: 'direct' }], { a: 200 }, {}, null);
+  assert.deepEqual(out, []);
+});
+
+test('roomPreview dùng preview đã tính, kể cả null', () => {
+  const m = { createdAt: 300 };
+  assert.equal(roomPreview({ id: 'a' }, { preview: null, clearedAt: 200 }), null);
+  assert.equal(roomPreview({ id: 'a' }, { preview: m }), m);
+});
+
+test('roomPreview không lộ tin cũ/người bị chặn khi preview chưa tính', () => {
+  const room = { id: 'a', lastMessage: { senderId: 'x', createdAt: 300 } };
+  assert.equal(roomPreview(room, {}).createdAt, 300); // chưa xoá, chưa chặn → dùng tin thô
+  assert.equal(roomPreview(room, { clearedAt: 200 }), null); // đã xoá → không dùng tin thô
+  assert.equal(roomPreview(room, { blocked: { x: 100 }, selfUid: 'me' }), null); // chặn sau tin → ẩn
+  assert.equal(roomPreview(room, { blocked: { x: 400 }, selfUid: 'me' }).createdAt, 300); // chặn trước tin → hiện
+});
+
+test('roomPreview không lọc tin của chính mình', () => {
+  const room = { id: 'a', lastMessage: { senderId: 'me', createdAt: 300 } };
+  assert.equal(roomPreview(room, { blocked: { me: 100 }, selfUid: 'me' }).createdAt, 300);
 });

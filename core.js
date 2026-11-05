@@ -189,6 +189,42 @@ export function isRoomHidden(room, clearedAt, preview) {
     return !preview;
 }
 
+// Danh sách phòng sẽ hiện ở cột bên trái: bỏ phòng đã xoá lịch sử mà không còn
+// tin hiển thị, nhưng LUÔN giữ phòng đang mở (activeRoomId) để khung chat đang
+// xem không biến mất khỏi danh sách. `previews` là map room.id -> tin hiển thị
+// mới nhất (null nếu rỗng); thiếu khóa = chưa tính xong, coi như rỗng để không
+// hiện chớp nhoáng phòng đã xoá.
+export function filterVisibleRooms(rooms, clearedMap, previews, activeRoomId) {
+    var clears = clearedMap || {};
+    var prev = previews || {};
+    return (Array.isArray(rooms) ? rooms : []).filter(function (room) {
+        if (!room) return false;
+        if (room.id === activeRoomId) return true;
+        var preview = Object.prototype.hasOwnProperty.call(prev, room.id) ? prev[room.id] : undefined;
+        return !isRoomHidden(room, clears[room.id], preview);
+    });
+}
+
+// Tin xem trước của phòng cho danh sách, đã tôn trọng mốc xoá + chặn.
+// `options.preview` là giá trị previewByRoom đã tính (undefined = chưa tính).
+// Khi chưa tính xong, chỉ dùng tin thô `room.lastMessage` nếu chắc chắn nó vẫn
+// hiển thị (phòng chưa xoá và người gửi không bị chặn sau thời điểm tin).
+export function roomPreview(room, options) {
+    var o = options || {};
+    if (o.preview !== undefined) return o.preview;
+    if (!room) return null;
+    if (o.clearedAt != null) return null;
+    var last = room.lastMessage || null;
+    if (!last) return null;
+    var blocked = o.blocked || {};
+    if (o.selfUid !== last.senderId && blocked[last.senderId] != null) {
+        var bt = toMillis(blocked[last.senderId]);
+        var t = toMillis(last.createdAt);
+        if (t !== null && bt !== null && t > bt) return null;
+    }
+    return last;
+}
+
 // Chỉ được đọc cache cũ (khóa chung, chưa gắn uid) khi chưa có chủ hoặc đúng chủ.
 export function legacyCacheAllowed(localOwner, uid) {
     return localOwner === null || localOwner === undefined || localOwner === uid;
