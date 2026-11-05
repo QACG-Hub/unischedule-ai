@@ -1,0 +1,10 @@
+.git
+.vercel
+node_modules
+.superpowers
+supabase
+docs
+tests
+package.json
+package-lock.json
+*.md
