@@ -5,6 +5,25 @@
 -- (rooms, room_members, messages) — không thay đổi profiles/subjects/reads.
 -- ============================================================================
 
+-- Hàm chẩn đoán: cho biết policy hiện có + vai trò đang chạy (để kiểm tra từ xa).
+create or replace function public.zz_policy_debug()
+returns jsonb
+language sql security definer set search_path = public as $$
+    select jsonb_build_object(
+        'current_user', current_user,
+        'session_user', session_user,
+        'policies', coalesce((
+            select jsonb_agg(jsonb_build_object(
+                't', tablename, 'p', policyname, 'cmd', cmd,
+                'perm', permissive, 'check', with_check
+            ) order by tablename, policyname)
+            from pg_policies
+            where schemaname = 'public' and tablename in ('rooms', 'room_members', 'messages')
+        ), '[]'::jsonb)
+    );
+$$;
+grant execute on function public.zz_policy_debug() to anon, authenticated;
+
 -- 0) Cột trạng thái thành viên (active = đã vào, pending = chờ đồng ý).
 alter table public.room_members
     add column if not exists status text not null default 'active';
