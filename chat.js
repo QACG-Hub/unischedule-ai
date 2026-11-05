@@ -314,11 +314,14 @@ export async function openDirect(otherUid) {
     if (!existing) {
         // Người tạo phòng thành chủ và thêm CẢ HAI thành viên (đều active, chat
         // riêng không cần chờ đồng ý). Policy room_members_insert chỉ cho chủ chèn.
-        const { error: insErr } = await client.from('rooms').upsert(
-            { id: roomId, type: 'direct', name: null, owner: uid },
-            { onConflict: 'id', ignoreDuplicates: true }
+        // Dùng insert thay vì upsert: upsert (ON CONFLICT) của PostgREST còn kiểm
+        // tra policy SELECT của rooms, mà phòng vừa tạo chưa có thành viên nên chủ
+        // chưa đọc lại được (báo 42501). Trùng id (người kia tạo trước) là 23505,
+        // bỏ qua vì đã có phòng.
+        const { error: insErr } = await client.from('rooms').insert(
+            { id: roomId, type: 'direct', name: null, owner: uid }
         );
-        if (insErr) console.warn('openDirect(room):', insErr);
+        if (insErr && insErr.code !== '23505') console.warn('openDirect(room):', insErr);
         const { error: memErr } = await client.from('room_members').upsert(
             [{ room_id: roomId, user_id: uid, status: 'active' },
              { room_id: roomId, user_id: otherUid, status: 'active' }],
@@ -383,24 +386,28 @@ export async function createGroup(name, memberUids) {
     const cleanName = String(name || '').trim() || 'Nhóm';
     const ids = Array.from(new Set([uid].concat(memberUids || [])));
 
-    const { data, error } = await client.from('rooms').insert({
-        id: 'grp_' + uid.slice(0, 8) + '_' + Date.now().toString(36),
+    // Tự sinh id ở client: không dùng .select() ngay sau insert vì phòng vừa tạo
+    // chưa có dòng room_members nên policy SELECT của rooms chưa cho chủ đọc lại
+    // (RETURNING sẽ báo 42501). Chèn xong thành viên rồi mới đọc qua refresh().
+    const roomId = 'grp_' + uid.slice(0, 8) + '_' + Date.now().toString(36);
+    const { error } = await client.from('rooms').insert({
+        id: roomId,
         type: 'group',
         name: cleanName,
         owner: uid
-    }).select('id').single();
+    });
     if (error) { console.warn('createGroup:', error); return null; }
 
     // Người tạo là thành viên chính thức; người được mời ở trạng thái chờ đồng ý.
     const rows = ids.map(function (m) {
-        return { room_id: data.id, user_id: m, status: m === uid ? 'active' : 'pending' };
+        return { room_id: roomId, user_id: m, status: m === uid ? 'active' : 'pending' };
     });
     const { error: memErr } = await client.from('room_members').upsert(rows, { onConflict: 'room_id,user_id', ignoreDuplicates: true });
     if (memErr) console.warn('createGroup(members):', memErr);
 
     if (roomListRefresh) await roomListRefresh().catch(logErr);
-    openRoom(data.id);
-    return data.id;
+    openRoom(roomId);
+    return roomId;
 }
 
 export async function renameGroup(roomId, name) {

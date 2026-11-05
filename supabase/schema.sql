@@ -340,7 +340,7 @@ create policy subjects_all on public.subjects
 drop policy if exists rooms_select on public.rooms;
 create policy rooms_select on public.rooms
     for select to authenticated
-    using (type = 'public' or public.is_room_member(id) or public.is_invited(id));
+    using (type = 'public' or owner = auth.uid() or public.is_room_member(id) or public.is_invited(id));
 
 drop policy if exists rooms_insert on public.rooms;
 create policy rooms_insert on public.rooms
