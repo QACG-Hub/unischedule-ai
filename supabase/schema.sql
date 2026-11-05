@@ -77,7 +77,19 @@ create table if not exists public.reads (
     room_id text not null,
     user_id uuid not null,
     last_read_at timestamptz not null default now(),
+    cleared_at timestamptz,
     primary key (room_id, user_id)
+);
+
+-- Cho database đã tồn tại trước khi có cột này.
+alter table public.reads add column if not exists cleared_at timestamptz;
+
+create table if not exists public.blocks (
+    blocker uuid not null references auth.users(id) on delete cascade,
+    blocked uuid not null references auth.users(id) on delete cascade,
+    created_at timestamptz not null default now(),
+    primary key (blocker, blocked),
+    check (blocker <> blocked)
 );
 
 create index if not exists messages_room_created_idx on public.messages (room_id, created_at desc);
@@ -161,6 +173,51 @@ as $$
     );
 $$;
 
+-- Có tồn tại chặn giữa a và b (bất kỳ chiều nào)?
+create or replace function public.is_blocked(a uuid, b uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+    select exists (
+        select 1 from public.blocks
+        where (blocker = a and blocked = b) or (blocker = b and blocked = a)
+    );
+$$;
+
+-- Chủ phòng (SECURITY DEFINER để policy đọc được mà không phụ thuộc RLS của rooms).
+create or replace function public.room_owner(p_room_id text)
+returns uuid
+language sql
+security definer
+set search_path = public
+stable
+as $$
+    select owner from public.rooms where id = p_room_id;
+$$;
+
+-- Gửi được tin vào phòng? Đọc được phòng VÀ nếu là chat riêng thì không chặn nhau.
+create or replace function public.can_send_to_room(p_room_id text)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+    select public.can_read_room(p_room_id)
+       and (
+            (select type from public.rooms where id = p_room_id) is distinct from 'direct'
+            or not exists (
+                select 1 from public.room_members m
+                where m.room_id = p_room_id
+                  and m.user_id <> auth.uid()
+                  and public.is_blocked(auth.uid(), m.user_id)
+            )
+       );
+$$;
+
 -- Tên tài khoản còn trống không (gọi được cả khi chưa đăng nhập).
 create or replace function public.is_username_available(p_username text)
 returns boolean
@@ -210,6 +267,9 @@ grant execute on function public.is_room_member(text) to authenticated;
 grant execute on function public.can_read_room(text) to authenticated;
 grant execute on function public.is_invited(text) to authenticated;
 grant execute on function public.owns_room(text) to authenticated;
+grant execute on function public.is_blocked(uuid, uuid) to authenticated;
+grant execute on function public.room_owner(text) to authenticated;
+grant execute on function public.can_send_to_room(text) to authenticated;
 grant execute on function public.is_username_available(text) to anon, authenticated;
 
 revoke execute on function public.set_my_recovery_code(text) from public;
@@ -296,6 +356,7 @@ alter table public.rooms          enable row level security;
 alter table public.room_members   enable row level security;
 alter table public.messages       enable row level security;
 alter table public.reads          enable row level security;
+alter table public.blocks         enable row level security;
 
 -- Xoá MỌI policy cũ trên các bảng liên quan để migration tự lành, kể cả
 -- policy lỗi thời/đặt tên lạ còn sót lại trên database đã cấu hình trước đó.
@@ -306,7 +367,7 @@ begin
     for r in
         select policyname, tablename from pg_policies
         where schemaname = 'public'
-          and tablename in ('profiles','recovery_codes','subjects','rooms','room_members','messages','reads')
+          and tablename in ('profiles','recovery_codes','subjects','rooms','room_members','messages','reads','blocks')
     loop
         begin
             execute format('drop policy if exists %I on public.%I', r.policyname, r.tablename);
@@ -376,14 +437,21 @@ create policy room_members_select on public.room_members
 drop policy if exists room_members_insert on public.room_members;
 create policy room_members_insert on public.room_members
     for insert to authenticated
-    with check (public.owns_room(room_id) and status in ('active', 'pending'));
+    with check (
+        public.owns_room(room_id)
+        and status in ('active', 'pending')
+        and not public.is_blocked(auth.uid(), user_id)
+    );
 
 -- Người được mời tự chuyển dòng của mình sang 'active'; chủ phòng cũng đổi được.
 drop policy if exists room_members_update on public.room_members;
 create policy room_members_update on public.room_members
     for update to authenticated
     using (user_id = auth.uid() or public.owns_room(room_id))
-    with check (user_id = auth.uid() or public.owns_room(room_id));
+    with check (
+        (user_id = auth.uid() or public.owns_room(room_id))
+        and not public.is_blocked(auth.uid(), public.room_owner(room_id))
+    );
 
 drop policy if exists room_members_delete on public.room_members;
 create policy room_members_delete on public.room_members
@@ -399,7 +467,7 @@ create policy messages_select on public.messages
 drop policy if exists messages_insert on public.messages;
 create policy messages_insert on public.messages
     for insert to authenticated
-    with check (public.can_read_room(room_id) and sender = auth.uid());
+    with check (public.can_send_to_room(room_id) and sender = auth.uid());
 
 -- reads: chỉ dòng của mình.
 drop policy if exists reads_all on public.reads;
@@ -407,6 +475,22 @@ create policy reads_all on public.reads
     for all to authenticated
     using (user_id = auth.uid())
     with check (user_id = auth.uid());
+
+-- blocks: chỉ đọc dòng liên quan tới mình; chỉ tạo/xoá chặn của chính mình.
+drop policy if exists blocks_select on public.blocks;
+create policy blocks_select on public.blocks
+    for select to authenticated
+    using (blocker = auth.uid() or blocked = auth.uid());
+
+drop policy if exists blocks_insert on public.blocks;
+create policy blocks_insert on public.blocks
+    for insert to authenticated
+    with check (blocker = auth.uid());
+
+drop policy if exists blocks_delete on public.blocks;
+create policy blocks_delete on public.blocks
+    for delete to authenticated
+    using (blocker = auth.uid());
 
 -- ---------------------------------------------------------------------------
 -- Tự tạo hồ sơ khi tài khoản mới được tạo (không phụ thuộc trình duyệt)
@@ -450,7 +534,7 @@ do $$
 declare
     t text;
 begin
-    foreach t in array array['rooms', 'room_members', 'messages', 'reads', 'subjects', 'profiles'] loop
+    foreach t in array array['rooms', 'room_members', 'messages', 'reads', 'subjects', 'profiles', 'blocks'] loop
         if not exists (
             select 1 from pg_publication_tables
             where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
