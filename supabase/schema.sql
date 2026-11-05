@@ -229,6 +229,12 @@ security definer
 set search_path = public
 as $$
 begin
+    -- Khi xoá tài khoản, FK rooms.owner "on delete set null" chạy UPDATE đặt owner = null.
+    -- Lúc đó không có JWT nên auth.uid() is null. Cho phép để việc xoá user không bị chặn.
+    if auth.uid() is null and new.owner is null and old.owner is not null then
+        return new;
+    end if;
+
     if new.id <> old.id or new.type <> old.type then
         raise exception 'Không được đổi id/loại phòng';
     end if;
