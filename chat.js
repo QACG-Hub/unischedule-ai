@@ -7,7 +7,7 @@
 import { client } from './supabase-init.js';
 import {
     isPublicRoomId, unreadCount, roomLabel, directRoomId,
-    filterDirectory, sortMessagesAsc, partitionRooms
+    filterDirectory, sortMessagesAsc, partitionRooms, visibleMessages
 } from './core.js';
 
 let currentUser = null;
@@ -18,6 +18,10 @@ let directoryUsers = [];    // danh sách phẳng cho modal chọn người
 let lastReadMap = {};       // roomId -> mốc đọc (ms)
 let unreadByRoom = {};      // roomId -> số chưa đọc
 let unreadToken = 0;
+let clearedMap = {};        // roomId -> mốc xoá lịch sử (ms)
+let blockedMap = {};        // uid -> mốc chặn sớm nhất (ms)  (Task 4 nạp dữ liệu)
+let previewByRoom = {};     // roomId -> tin hiển thị gần nhất (hoặc null)
+let currentMessages = [];   // tin thô của phòng đang mở
 
 let roomListRefresh = null;
 let roomListUnsub = null;
@@ -232,19 +236,56 @@ export async function markRoomRead(roomId) {
     } catch (e) { /* bỏ qua, không chặn chat */ }
 }
 
+export async function clearHistory(roomId) {
+    if (!client || !currentUser || !roomId || isPublicRoomId(roomId)) return;
+    const now = new Date().toISOString();
+    const { error } = await client.from('reads').upsert(
+        { room_id: roomId, user_id: currentUser.uid, cleared_at: now },
+        { onConflict: 'room_id,user_id' }
+    );
+    if (error) {
+        console.warn('clearHistory:', error);
+        if (typeof window.showToast === 'function') window.showToast('Không xoá được lịch sử trò chuyện.', 'error');
+        return;
+    }
+    clearedMap[roomId] = Date.parse(now);
+    refreshChatViews();
+    if (roomListRefresh) roomListRefresh().catch(logErr);
+    if (typeof window.showToast === 'function') window.showToast('Đã xoá lịch sử trò chuyện', 'info');
+}
+
+function refreshChatViews() {
+    if (currentRoomId) renderMessages(currentMessages);
+    recomputeUnread()
+        .then(function () { renderRoomList(roomsCache); })
+        .catch(logErr);
+    const gi = document.getElementById('groupInfoModal');
+    if (gi && !gi.classList.contains('hidden')) renderGroupInfo();
+}
+
 /* ------------------------- Chưa đọc ------------------------- */
 
 async function recomputeUnread() {
     if (!client || !currentUser) return;
+    const uid = currentUser.uid;
     const token = ++unreadToken;
     const results = {};
+    const previews = {};
     await Promise.all(roomsCache.map(async function (room) {
-        if (room.id === currentRoomId) { results[room.id] = 0; return; }
-        const msgs = await fetchRoomMessages(room.id, 50);
-        results[room.id] = unreadCount(msgs, lastReadMap[room.id] == null ? null : lastReadMap[room.id]);
+        const msgs = sortMessagesAsc(await fetchRoomMessages(room.id, 50));
+        const visible = visibleMessages(msgs, {
+            clearedAt: clearedMap[room.id] == null ? null : clearedMap[room.id],
+            blocked: blockedMap,
+            selfUid: uid
+        });
+        results[room.id] = room.id === currentRoomId
+            ? 0
+            : unreadCount(visible, lastReadMap[room.id] == null ? null : lastReadMap[room.id]);
+        previews[room.id] = visible.length ? visible[visible.length - 1] : null;
     }));
     if (token !== unreadToken) return; // có lần tính mới hơn đang chạy
     unreadByRoom = results;
+    previewByRoom = previews;
 }
 
 // Nghe mốc đã đọc của chính mình để tính lại số chưa đọc.
@@ -253,13 +294,16 @@ function subscribeReads() {
     const uid = currentUser.uid;
 
     async function refetch() {
-        const { data, error } = await client.from('reads').select('room_id, last_read_at').eq('user_id', uid);
+        const { data, error } = await client.from('reads').select('room_id, last_read_at, cleared_at').eq('user_id', uid);
         if (error) { console.warn('subscribeReads:', error); return; }
-        const map = {};
+        const readMap = {};
+        const clearMap = {};
         (data || []).forEach(function (r) {
-            map[r.room_id] = r.last_read_at ? ms(r.last_read_at) : null;
+            readMap[r.room_id] = r.last_read_at ? ms(r.last_read_at) : null;
+            clearMap[r.room_id] = r.cleared_at ? ms(r.cleared_at) : null;
         });
-        lastReadMap = map;
+        lastReadMap = readMap;
+        clearedMap = clearMap;
         await recomputeUnread();
         renderRoomList(roomsCache);
     }
@@ -762,13 +806,24 @@ function renderRoomList(list) {
         el.appendChild(item);
     });
 
-    split.active.forEach(function (room) {
+    const previewAt = function (room) {
+        if (previewByRoom[room.id] !== undefined) return previewByRoom[room.id];
+        return room.lastMessage;
+    };
+    const activeSorted = split.active.slice().sort(function (a, b) {
+        const pa = previewAt(a);
+        const pb = previewAt(b);
+        return ((pb && pb.createdAt) || 0) - ((pa && pa.createdAt) || 0);
+    });
+
+    activeSorted.forEach(function (room) {
         const item = document.createElement('div');
         item.className = 'room-item' + (room.id === currentRoomId ? ' active' : '');
         item.dataset.roomId = room.id;
         const label = roomLabel(room, uid, directoryMap);
-        const preview = room.lastMessage
-            ? esc(room.lastMessage.senderName || '') + ': ' + esc(room.lastMessage.text || '')
+        const last = previewAt(room);
+        const preview = last
+            ? esc(last.senderName || '') + ': ' + esc(last.text || '')
             : 'Chưa có tin nhắn';
         const unread = unreadByRoom[room.id] || 0;
         item.innerHTML =
@@ -786,10 +841,16 @@ function renderRoomList(list) {
     if (gi && !gi.classList.contains('hidden')) renderGroupInfo();
 }
 
-function renderMessages(msgs) {
+function renderMessages(raw) {
     const el = document.getElementById('messageList');
     if (!el) return;
+    currentMessages = Array.isArray(raw) ? raw : [];
     const uid = currentUser && currentUser.uid;
+    const msgs = visibleMessages(currentMessages, {
+        clearedAt: clearedMap[currentRoomId] == null ? null : clearedMap[currentRoomId],
+        blocked: blockedMap,
+        selfUid: uid
+    });
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     el.innerHTML = '';
     (msgs || []).forEach(function (m) {
