@@ -7,7 +7,7 @@
 import { client } from './supabase-init.js';
 import {
     isPublicRoomId, unreadCount, roomLabel, directRoomId,
-    filterDirectory, sortMessagesAsc
+    filterDirectory, sortMessagesAsc, partitionRooms
 } from './core.js';
 
 let currentUser = null;
@@ -92,7 +92,7 @@ export async function ensurePublicRoom() {
 
 /* ------------------------- Danh sách phòng ------------------------- */
 
-function mapRoom(row, membersMap) {
+function mapRoom(row, membersMap, pendingMap, myStatusMap) {
     const members = membersMap[row.id] || [];
     return {
         id: row.id,
@@ -100,6 +100,8 @@ function mapRoom(row, membersMap) {
         name: row.name,
         ownerId: row.owner,
         members: members,
+        pendingMembers: (pendingMap && pendingMap[row.id]) || [],
+        myStatus: (myStatusMap && myStatusMap[row.id]) || 'active',
         lastMessage: row.last_message_at ? {
             text: row.last_message_text || '',
             senderId: row.last_message_sender,
@@ -116,23 +118,30 @@ export function subscribeRoomList(cb) {
     async function refresh() {
         const [pubRes, mineRes, membersRes] = await Promise.all([
             client.from('rooms').select('*').eq('id', 'public').maybeSingle(),
-            client.from('room_members').select('rooms(*)').eq('user_id', uid),
-            client.from('room_members').select('room_id, user_id')
+            client.from('room_members').select('status, rooms(*)').eq('user_id', uid),
+            client.from('room_members').select('room_id, user_id, status')
         ]);
         if (pubRes.error) console.warn('subscribeRoomList(public):', pubRes.error);
         if (mineRes.error) console.warn('subscribeRoomList(mine):', mineRes.error);
         if (membersRes.error) console.warn('subscribeRoomList(members):', membersRes.error);
 
         const membersMap = {};
+        const pendingMap = {};
         (membersRes.data || []).forEach(function (r) {
-            (membersMap[r.room_id] = membersMap[r.room_id] || []).push(r.user_id);
+            const target = r.status === 'pending' ? pendingMap : membersMap;
+            (target[r.room_id] = target[r.room_id] || []).push(r.user_id);
+        });
+
+        const myStatusMap = {};
+        (mineRes.data || []).forEach(function (r) {
+            if (r.rooms) myStatusMap[r.rooms.id] = r.status || 'active';
         });
 
         const list = [];
-        if (pubRes.data) list.push(mapRoom(pubRes.data, membersMap));
+        if (pubRes.data) list.push(mapRoom(pubRes.data, membersMap, pendingMap, myStatusMap));
         (mineRes.data || []).forEach(function (r) {
             const row = r.rooms;
-            if (row && row.id !== 'public') list.push(mapRoom(row, membersMap));
+            if (row && row.id !== 'public') list.push(mapRoom(row, membersMap, pendingMap, myStatusMap));
         });
         list.sort(function (a, b) {
             return (b.lastMessage ? b.lastMessage.createdAt : 0) - (a.lastMessage ? a.lastMessage.createdAt : 0);
@@ -175,6 +184,8 @@ export function subscribeMessages(roomId, cb) {
 
 export function openRoom(roomId) {
     if (!client || !currentUser || !roomId) return;
+    const target = roomsCache.filter(function (r) { return r.id === roomId; })[0];
+    if (target && target.myStatus === 'pending') return; // chưa đồng ý lời mời
     currentRoomId = roomId;
     unreadByRoom[roomId] = 0;
     setChatTitle();
@@ -301,14 +312,16 @@ export async function openDirect(otherUid) {
 
     const { data: existing } = await client.from('rooms').select('id').eq('id', roomId).maybeSingle();
     if (!existing) {
-        // Người tạo phòng thành chủ và thêm CẢ HAI thành viên.
-        // Policy room_members_insert chỉ cho chủ phòng chèn (chống tự gia nhập phòng người khác).
-        const { error: insErr } = await client.from('rooms').insert({
-            id: roomId, type: 'direct', name: null, owner: uid
-        });
+        // Người tạo phòng thành chủ và thêm CẢ HAI thành viên (đều active, chat
+        // riêng không cần chờ đồng ý). Policy room_members_insert chỉ cho chủ chèn.
+        const { error: insErr } = await client.from('rooms').upsert(
+            { id: roomId, type: 'direct', name: null, owner: uid },
+            { onConflict: 'id', ignoreDuplicates: true }
+        );
         if (insErr) console.warn('openDirect(room):', insErr);
         const { error: memErr } = await client.from('room_members').upsert(
-            [{ room_id: roomId, user_id: uid }, { room_id: roomId, user_id: otherUid }],
+            [{ room_id: roomId, user_id: uid, status: 'active' },
+             { room_id: roomId, user_id: otherUid, status: 'active' }],
             { onConflict: 'room_id,user_id', ignoreDuplicates: true }
         );
         if (memErr) console.warn('openDirect(members):', memErr);
@@ -378,7 +391,10 @@ export async function createGroup(name, memberUids) {
     }).select('id').single();
     if (error) { console.warn('createGroup:', error); return null; }
 
-    const rows = ids.map(function (m) { return { room_id: data.id, user_id: m }; });
+    // Người tạo là thành viên chính thức; người được mời ở trạng thái chờ đồng ý.
+    const rows = ids.map(function (m) {
+        return { room_id: data.id, user_id: m, status: m === uid ? 'active' : 'pending' };
+    });
     const { error: memErr } = await client.from('room_members').upsert(rows, { onConflict: 'room_id,user_id', ignoreDuplicates: true });
     if (memErr) console.warn('createGroup(members):', memErr);
 
@@ -400,9 +416,10 @@ export async function renameGroup(roomId, name) {
 
 export async function addGroupMembers(roomId, uids) {
     if (!client || !currentUser || !roomId || !uids || !uids.length) return;
-    const rows = uids.map(function (m) { return { room_id: roomId, user_id: m }; });
+    const rows = uids.map(function (m) { return { room_id: roomId, user_id: m, status: 'pending' }; });
     const { error } = await client.from('room_members').upsert(rows, { onConflict: 'room_id,user_id', ignoreDuplicates: true });
-    if (error) console.warn('addGroupMembers:', error);
+    if (error) { console.warn('addGroupMembers:', error); return; }
+    if (typeof window.showToast === 'function') window.showToast('Đã gửi lời mời tham gia nhóm', 'info');
     if (roomListRefresh) roomListRefresh().catch(logErr);
 }
 
@@ -418,6 +435,29 @@ export async function leaveGroup(roomId) {
     await removeGroupMember(roomId, currentUser.uid);
 }
 
+// Người được mời đồng ý vào nhóm: chuyển dòng của mình sang 'active'.
+export async function acceptGroupInvite(roomId) {
+    if (!client || !currentUser || !roomId) return;
+    const { error } = await client.from('room_members')
+        .update({ status: 'active' })
+        .eq('room_id', roomId)
+        .eq('user_id', currentUser.uid);
+    if (error) { console.warn('acceptGroupInvite:', error); return; }
+    if (roomListRefresh) await roomListRefresh().catch(logErr);
+    openRoom(roomId);
+}
+
+// Người được mời từ chối: xoá dòng của mình.
+export async function declineGroupInvite(roomId) {
+    if (!client || !currentUser || !roomId) return;
+    const { error } = await client.from('room_members')
+        .delete()
+        .eq('room_id', roomId)
+        .eq('user_id', currentUser.uid);
+    if (error) { console.warn('declineGroupInvite:', error); return; }
+    if (roomListRefresh) await roomListRefresh().catch(logErr);
+}
+
 function currentRoom() {
     return roomsCache.filter(function (r) { return r.id === currentRoomId; })[0] || null;
 }
@@ -428,10 +468,13 @@ function renderCreateGroupList() {
     const el = document.getElementById('groupMemberList');
     if (!el) return;
     const uid = currentUser && currentUser.uid;
-    const users = directoryUsers.filter(function (u) { return u.uid !== uid; });
+    const search = document.getElementById('groupSearch');
+    const q = search ? search.value : '';
+    const others = directoryUsers.filter(function (u) { return u.uid !== uid; });
+    const users = filterDirectory(others, q);
     el.innerHTML = '';
     if (!users.length) {
-        el.innerHTML = '<div class="pick-user-empty">Chưa có người dùng khác.</div>';
+        el.innerHTML = '<div class="pick-user-empty">Không tìm thấy người dùng nào.</div>';
         return;
     }
     users.forEach(function (u) {
@@ -489,12 +532,32 @@ function renderGroupInfo() {
             }
             list.appendChild(row);
         });
+
+        // Lời mời đang chờ (chỉ chủ nhóm thấy).
+        if (isOwner) {
+            (room.pendingMembers || []).forEach(function (m) {
+                const info = directoryMap[m] || {};
+                const row = document.createElement('div');
+                row.className = 'group-member-row';
+                row.innerHTML = '<span class="pick-user-name">' + esc(info.displayName || 'Người dùng') + ' (đang chờ)</span>';
+                const cancel = document.createElement('button');
+                cancel.type = 'button';
+                cancel.className = 'icon-btn';
+                cancel.title = 'Huỷ lời mời';
+                cancel.innerHTML = '<svg class="ico"><use href="#i-x"/></svg>';
+                cancel.addEventListener('click', function () {
+                    removeGroupMember(room.id, m).catch(function (e) { console.warn('removeGroupMember:', e); });
+                });
+                row.appendChild(cancel);
+                list.appendChild(row);
+            });
+        }
     }
 
     // Danh sách có thể thêm (owner).
     const addList = document.getElementById('groupAddList');
     if (addList && isOwner) {
-        const members = room.members || [];
+        const members = (room.members || []).concat(room.pendingMembers || []);
         const candidates = directoryUsers.filter(function (u) {
             return members.indexOf(u.uid) === -1;
         });
@@ -528,9 +591,17 @@ function wireGroupUi() {
         createBtn.addEventListener('click', function () {
             const nameInput = document.getElementById('groupNameInput');
             if (nameInput) nameInput.value = '';
+            const search = document.getElementById('groupSearch');
+            if (search) search.value = '';
             renderCreateGroupList();
             if (typeof window.openModal === 'function') window.openModal('createGroupModal');
         });
+    }
+
+    const groupSearch = document.getElementById('groupSearch');
+    if (groupSearch && !groupSearch.dataset.wired) {
+        groupSearch.dataset.wired = '1';
+        groupSearch.addEventListener('input', renderCreateGroupList);
     }
 
     const submit = document.getElementById('createGroupSubmit');
@@ -642,7 +713,49 @@ function renderRoomList(list) {
     if (!el) return;
     const uid = currentUser && currentUser.uid;
     el.innerHTML = '';
-    (list || []).forEach(function (room) {
+
+    const split = partitionRooms(list || [], uid);
+
+    // Lời mời tham gia nhóm: hiện trên cùng, kèm nút Đồng ý / Từ chối.
+    split.invites.forEach(function (room) {
+        const label = roomLabel(room, uid, directoryMap);
+        const item = document.createElement('div');
+        item.className = 'room-item room-invite';
+        item.dataset.roomId = room.id;
+        item.innerHTML =
+            '<div class="room-item-main">' +
+            '<div class="room-item-name">Lời mời: ' + esc(label) + '</div>' +
+            '<div class="room-item-preview">Mời bạn tham gia nhóm</div>' +
+            '</div>';
+
+        const actions = document.createElement('div');
+        actions.className = 'room-invite-actions';
+
+        const ok = document.createElement('button');
+        ok.type = 'button';
+        ok.className = 'btn btn-primary btn-sm';
+        ok.textContent = 'Đồng ý';
+        ok.addEventListener('click', function (e) {
+            e.stopPropagation();
+            acceptGroupInvite(room.id).catch(function (err) { console.warn('acceptGroupInvite:', err); });
+        });
+
+        const no = document.createElement('button');
+        no.type = 'button';
+        no.className = 'btn btn-light btn-sm';
+        no.textContent = 'Từ chối';
+        no.addEventListener('click', function (e) {
+            e.stopPropagation();
+            declineGroupInvite(room.id).catch(function (err) { console.warn('declineGroupInvite:', err); });
+        });
+
+        actions.appendChild(ok);
+        actions.appendChild(no);
+        item.appendChild(actions);
+        el.appendChild(item);
+    });
+
+    split.active.forEach(function (room) {
         const item = document.createElement('div');
         item.className = 'room-item' + (room.id === currentRoomId ? ' active' : '');
         item.dataset.roomId = room.id;
@@ -660,6 +773,7 @@ function renderRoomList(list) {
         item.addEventListener('click', function () { openRoom(room.id); });
         el.appendChild(item);
     });
+
     updateGroupInfoBtn();
     const gi = document.getElementById('groupInfoModal');
     if (gi && !gi.classList.contains('hidden')) renderGroupInfo();
