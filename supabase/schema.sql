@@ -293,6 +293,7 @@ alter table public.reads          enable row level security;
 
 -- Xoá MỌI policy cũ trên các bảng liên quan để migration tự lành, kể cả
 -- policy lỗi thời/đặt tên lạ còn sót lại trên database đã cấu hình trước đó.
+-- Bọc try/catch từng lệnh để một policy không xoá được không làm dừng cả file.
 do $$
 declare r record;
 begin
@@ -301,7 +302,11 @@ begin
         where schemaname = 'public'
           and tablename in ('profiles','recovery_codes','subjects','rooms','room_members','messages','reads')
     loop
-        execute format('drop policy if exists %I on public.%I', r.policyname, r.tablename);
+        begin
+            execute format('drop policy if exists %I on public.%I', r.policyname, r.tablename);
+        exception when others then
+            raise notice 'bo qua policy % tren %: %', r.policyname, r.tablename, sqlerrm;
+        end;
     end loop;
 end $$;
 
