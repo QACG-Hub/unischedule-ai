@@ -138,7 +138,11 @@ export function onPasswordRecovery(cb) {
 export async function requestPasswordReset(identifier) {
     const c = requireClient();
     const id = String(identifier || '').trim();
-    const redirectTo = (typeof location !== 'undefined' && location.origin) ? location.origin : undefined;
+    // Dùng URL thư mục hiện tại (không chỉ origin) để đúng cả khi deploy dưới
+    // thư mục con, ví dụ GitHub Pages: https://user.github.io/<repo>/.
+    const redirectTo = (typeof location !== 'undefined' && location.href)
+        ? new URL('.', location.href).href
+        : undefined;
 
     if (looksLikeEmail(id)) {
         await c.auth.resetPasswordForEmail(id, redirectTo ? { redirectTo: redirectTo } : undefined);
