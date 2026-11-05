@@ -180,6 +180,15 @@ export function newestMessageTime(messages, fallbackMs) {
     return max;
 }
 
+// Phòng đã xoá lịch sử và không còn tin hiển thị nào → ẩn khỏi danh sách của
+// riêng mình. Kênh chung không bao giờ bị ẩn. `preview` là tin hiển thị mới nhất
+// (null/undefined nghĩa là không còn tin nào để xem).
+export function isRoomHidden(room, clearedAt, preview) {
+    if (!room || room.type === 'public') return false;
+    if (clearedAt == null) return false;
+    return !preview;
+}
+
 // Chỉ được đọc cache cũ (khóa chung, chưa gắn uid) khi chưa có chủ hoặc đúng chủ.
 export function legacyCacheAllowed(localOwner, uid) {
     return localOwner === null || localOwner === undefined || localOwner === uid;

@@ -4,7 +4,7 @@ import {
   directRoomId, cacheKeyFor, shouldOfferUpload, filterDirectory,
   roomLabel, unreadCount, validateRegistration, isPublicRoomId,
   sortMessagesAsc, legacyCacheAllowed, partitionRooms,
-  visibleMessages, blockTimes, blockedByMe, newestMessageTime,
+  visibleMessages, blockTimes, blockedByMe, newestMessageTime, isRoomHidden,
   normalizeUsername, isValidUsername, isValidRecoveryCode,
   looksLikeEmail, validateSignup, profileUsername,
   GUEST_UID, isGuestUid, shouldMigrateGuest
@@ -230,4 +230,26 @@ test('newestMessageTime dùng fallback khi rỗng và bỏ qua dữ liệu sai',
   assert.equal(newestMessageTime(null, 500), 500);
   assert.equal(newestMessageTime([{ createdAt: 700 }], 500), 700);
   assert.equal(newestMessageTime([null, { createdAt: 'abc' }], null), null);
+});
+
+test('isRoomHidden ẩn phòng đã xoá lịch sử khi không còn tin hiển thị', () => {
+  assert.equal(isRoomHidden({ type: 'direct' }, 200, null), true);
+  assert.equal(isRoomHidden({ type: 'group' }, 200, undefined), true);
+});
+
+test('isRoomHidden không ẩn khi còn tin mới hiển thị', () => {
+  assert.equal(isRoomHidden({ type: 'direct' }, 200, { createdAt: 300 }), false);
+});
+
+test('isRoomHidden không ẩn phòng chưa xoá lịch sử', () => {
+  assert.equal(isRoomHidden({ type: 'direct' }, null, null), false);
+});
+
+test('isRoomHidden không bao giờ ẩn kênh chung', () => {
+  assert.equal(isRoomHidden({ type: 'public' }, 200, null), false);
+});
+
+test('isRoomHidden chịu dữ liệu rỗng/không hợp lệ', () => {
+  assert.equal(isRoomHidden(null, 200, null), false);
+  assert.equal(isRoomHidden(undefined, 200, null), false);
 });
