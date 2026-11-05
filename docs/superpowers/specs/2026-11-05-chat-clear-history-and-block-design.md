@@ -182,7 +182,7 @@ Ghi chú: `rooms_insert` **không** đổi (lúc tạo phòng chưa biết thàn
 8. Người bị chặn: DM bị chặn cứng hai chiều; ở nhóm/kênh chung tin bị ẩn khỏi người chặn (không cấm họ gửi cho người khác).
 9. Bỏ chặn rồi chặn lại: mốc chặn tính lại từ lần chặn mới (mốc cũ đã xoá cùng lúc bỏ chặn).
 10. Lời mời đang chờ: `room_members_update` kiểm tra chặn — nếu người nhận lời mời và chủ phòng đang chặn nhau thì việc "Đồng ý" bị từ chối.
-11. Mốc "xoá lịch sử" dùng giờ máy khách (giống `last_read_at` hiện tại) và áp dụng cho mọi tin kể cả tin của mình. Bộ lọc **chặn** mới miễn trừ tin của chính người đang xem (tránh tự ẩn tin mình gửi khi đồng hồ lệch).
+11. Mốc "xoá lịch sử" lấy từ **giờ server của tin mới nhất đã tải** (`messages.created_at`, lưu vào `reads.cleared_at`) — không dùng giờ máy khách, để tin gửi sau khi xoá luôn hiển thị kể cả khi đồng hồ máy lệch. Áp dụng cho mọi tin kể cả tin của mình. Bộ lọc **chặn** mới miễn trừ tin của chính người đang xem (tránh tự ẩn tin mình gửi khi đồng hồ lệch).
 12. Danh sách thành viên nhóm (đã có trong "Thông tin nhóm") được nâng cấp: bấm tên thành viên → "Nhắn tin riêng" (dùng lại `openDirect`) hoặc "Chặn"/"Bỏ chặn"; không hiện "Nhắn tin riêng" nếu hai người đang chặn nhau.
 
 ## Kiểm chứng dự kiến

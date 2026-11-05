@@ -7,7 +7,8 @@
 import { client } from './supabase-init.js';
 import {
     isPublicRoomId, unreadCount, roomLabel, directRoomId,
-    filterDirectory, sortMessagesAsc, partitionRooms, visibleMessages, blockTimes
+    filterDirectory, sortMessagesAsc, partitionRooms, visibleMessages, blockTimes,
+    blockedByMe, newestMessageTime
 } from './core.js';
 
 let currentUser = null;
@@ -19,7 +20,8 @@ let lastReadMap = {};       // roomId -> mốc đọc (ms)
 let unreadByRoom = {};      // roomId -> số chưa đọc
 let unreadToken = 0;
 let clearedMap = {};        // roomId -> mốc xoá lịch sử (ms)
-let blockedMap = {};        // uid -> mốc chặn sớm nhất (ms)  (Task 4 nạp dữ liệu)
+let blockedMap = {};        // uid -> mốc chặn sớm nhất (ms)  (dùng để ẩn tin)
+let myBlockedMap = {};      // uid mà CHÍNH mình đã chặn (dùng cho UI bỏ chặn)
 let previewByRoom = {};     // roomId -> tin hiển thị gần nhất (hoặc null)
 let currentMessages = [];   // tin thô của phòng đang mở
 
@@ -191,6 +193,8 @@ export function openRoom(roomId) {
     if (!client || !currentUser || !roomId) return;
     const target = roomsCache.filter(function (r) { return r.id === roomId; })[0];
     if (target && target.myStatus === 'pending') return; // chưa đồng ý lời mời
+    // Đồng bộ lại trạng thái chặn mỗi lần mở phòng (dự phòng khi realtime lỡ sự kiện).
+    refreshBlocks().catch(logErr);
     currentRoomId = roomId;
     unreadByRoom[roomId] = 0;
     setChatTitle();
@@ -244,9 +248,17 @@ export async function markRoomRead(roomId) {
 
 export async function clearHistory(roomId) {
     if (!client || !currentUser || !roomId || isPublicRoomId(roomId)) return;
-    const now = new Date().toISOString();
+    // Mốc xoá lấy từ giờ SERVER của tin mới nhất đã tải (created_at do server
+    // tạo), không dùng giờ máy khách — nhờ vậy tin gửi sau khi xoá luôn hiển
+    // thị kể cả khi đồng hồ máy lệch.
+    const mark = newestMessageTime(roomId === currentRoomId ? currentMessages : [], null);
+    if (mark === null) {
+        if (typeof window.showToast === 'function') window.showToast('Chưa có tin nhắn để xoá.', 'info');
+        return;
+    }
+    const iso = new Date(mark).toISOString();
     const { error } = await client.from('reads').upsert(
-        { room_id: roomId, user_id: currentUser.uid, cleared_at: now },
+        { room_id: roomId, user_id: currentUser.uid, cleared_at: iso },
         { onConflict: 'room_id,user_id' }
     );
     if (error) {
@@ -254,7 +266,7 @@ export async function clearHistory(roomId) {
         if (typeof window.showToast === 'function') window.showToast('Không xoá được lịch sử trò chuyện.', 'error');
         return;
     }
-    clearedMap[roomId] = Date.parse(now);
+    clearedMap[roomId] = mark;
     refreshChatViews();
     if (roomListRefresh) roomListRefresh().catch(logErr);
     if (typeof window.showToast === 'function') window.showToast('Đã xoá lịch sử trò chuyện', 'info');
@@ -328,9 +340,11 @@ async function refreshBlocks() {
     if (!client || !currentUser) return;
     const { data, error } = await client.from('blocks').select('blocker, blocked, created_at');
     if (error) { console.warn('refreshBlocks:', error); return; }
-    blockedMap = blockTimes((data || []).map(function (r) {
+    const rows = (data || []).map(function (r) {
         return { blocker: r.blocker, blocked: r.blocked, createdAt: Date.parse(r.created_at) };
-    }), currentUser.uid);
+    });
+    blockedMap = blockTimes(rows, currentUser.uid);
+    myBlockedMap = blockedByMe(rows, currentUser.uid);
     refreshChatViews();
     setChatTitle();
     renderPickUserList();
@@ -510,14 +524,16 @@ function showUserActions(anchor, actions) {
 function userActionsFor(uid) {
     const name = (directoryMap[uid] || {}).displayName || 'Người dùng';
     const actions = [];
-    if (!blockedMap[uid]) {
-        actions.push({ label: 'Nhắn tin riêng', onClick: function () {
-            if (typeof window.closeModal === 'function') window.closeModal('groupInfoModal');
-            openDirect(uid).catch(function (e) { console.warn('openDirect:', e); });
-        } });
-        actions.push({ label: 'Chặn ' + name, danger: true, onClick: function () { blockUser(uid).catch(logErr); } });
-    } else {
+    if (myBlockedMap[uid]) {
         actions.push({ label: 'Bỏ chặn ' + name, onClick: function () { unblockUser(uid).catch(logErr); } });
+    } else {
+        if (!blockedMap[uid]) {
+            actions.push({ label: 'Nhắn tin riêng', onClick: function () {
+                if (typeof window.closeModal === 'function') window.closeModal('groupInfoModal');
+                openDirect(uid).catch(function (e) { console.warn('openDirect:', e); });
+            } });
+        }
+        actions.push({ label: 'Chặn ' + name, danger: true, onClick: function () { blockUser(uid).catch(logErr); } });
     }
     return actions;
 }
@@ -526,7 +542,7 @@ function renderBlockedList() {
     const el = document.getElementById('blockedList');
     if (!el) return;
     el.innerHTML = '';
-    const uids = Object.keys(blockedMap);
+    const uids = Object.keys(myBlockedMap);
     if (!uids.length) {
         el.innerHTML = '<div class="pick-user-empty">Bạn chưa chặn ai.</div>';
         return;
@@ -568,7 +584,7 @@ function updateChatMenuBtn() {
         if (type === 'direct') {
             const other = otherUidOfDirect(room);
             block.classList.remove('hidden');
-            block.textContent = (other && blockedMap[other]) ? 'Bỏ chặn' : 'Chặn người này';
+            block.textContent = (other && myBlockedMap[other]) ? 'Bỏ chặn' : 'Chặn người này';
         } else {
             block.classList.add('hidden');
         }
@@ -619,7 +635,7 @@ function wireChatUi() {
             const room = currentRoom();
             const other = otherUidOfDirect(room);
             if (!other) return;
-            if (blockedMap[other]) unblockUser(other).catch(logErr);
+            if (myBlockedMap[other]) unblockUser(other).catch(logErr);
             else blockUser(other).catch(logErr);
         });
     }
@@ -979,6 +995,7 @@ export function teardownChat() {
     lastReadMap = {};
     clearedMap = {};
     blockedMap = {};
+    myBlockedMap = {};
     previewByRoom = {};
     currentMessages = [];
     currentUser = null;
@@ -1135,6 +1152,12 @@ if (typeof document !== 'undefined') {
             if (m) m.classList.add('hidden');
         }
     });
+    if (typeof window !== 'undefined') {
+        // Dự phòng realtime: đồng bộ lại chặn khi quay lại tab.
+        window.addEventListener('focus', function () {
+            if (currentUser) refreshBlocks().catch(logErr);
+        });
+    }
     document.addEventListener('submit', function (e) {
         if (e.target && e.target.id === 'messageForm') {
             e.preventDefault();

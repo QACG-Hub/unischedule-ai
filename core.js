@@ -157,6 +157,29 @@ export function blockTimes(blocks, selfUid) {
     return map;
 }
 
+// Tập uid mà CHÍNH selfUid đã chặn (một chiều). Dùng cho UI "Bỏ chặn" / danh
+// sách đã chặn, để không nhầm với người chặn mình.
+export function blockedByMe(blocks, selfUid) {
+    var map = {};
+    (Array.isArray(blocks) ? blocks : []).forEach(function (b) {
+        if (b && b.blocker === selfUid && b.blocked) map[b.blocked] = true;
+    });
+    return map;
+}
+
+// Mốc thời gian mới nhất trong danh sách tin (ms), hoặc fallback. Dùng làm mốc
+// "xoá lịch sử" dựa trên giờ SERVER của tin (tránh lệch đồng hồ máy khách).
+export function newestMessageTime(messages, fallbackMs) {
+    var max = null;
+    (Array.isArray(messages) ? messages : []).forEach(function (m) {
+        var t = toMillis(m && m.createdAt);
+        if (t !== null && (max === null || t > max)) max = t;
+    });
+    var fb = toMillis(fallbackMs);
+    if (fb !== null && (max === null || fb > max)) max = fb;
+    return max;
+}
+
 // Chỉ được đọc cache cũ (khóa chung, chưa gắn uid) khi chưa có chủ hoặc đúng chủ.
 export function legacyCacheAllowed(localOwner, uid) {
     return localOwner === null || localOwner === undefined || localOwner === uid;

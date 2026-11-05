@@ -4,7 +4,7 @@ import {
   directRoomId, cacheKeyFor, shouldOfferUpload, filterDirectory,
   roomLabel, unreadCount, validateRegistration, isPublicRoomId,
   sortMessagesAsc, legacyCacheAllowed, partitionRooms,
-  visibleMessages, blockTimes,
+  visibleMessages, blockTimes, blockedByMe, newestMessageTime,
   normalizeUsername, isValidUsername, isValidRecoveryCode,
   looksLikeEmail, validateSignup, profileUsername,
   GUEST_UID, isGuestUid, shouldMigrateGuest
@@ -206,4 +206,28 @@ test('blockTimes lấy mốc chặn sớm nhất giữa hai chiều', () => {
 test('blockTimes bỏ qua dòng không liên quan và dữ liệu rỗng', () => {
   assert.deepEqual(blockTimes([{ blocker: 'a', blocked: 'b', createdAt: 1 }], 'me'), {});
   assert.deepEqual(blockTimes(null, 'me'), {});
+});
+
+test('blockedByMe chỉ gồm người mình đã chặn (một chiều)', () => {
+  const blocks = [
+    { blocker: 'me', blocked: 'x', createdAt: 200 },
+    { blocker: 'y', blocked: 'me', createdAt: 100 }
+  ];
+  assert.deepEqual(blockedByMe(blocks, 'me'), { x: true });
+});
+
+test('blockedByMe bỏ dữ liệu rỗng và người không liên quan', () => {
+  assert.deepEqual(blockedByMe(null, 'me'), {});
+  assert.deepEqual(blockedByMe([{ blocker: 'a', blocked: 'b' }], 'me'), {});
+});
+
+test('newestMessageTime lấy mốc tin mới nhất trong danh sách', () => {
+  assert.equal(newestMessageTime([{ createdAt: 100 }, { createdAt: 300 }, { createdAt: 200 }]), 300);
+});
+
+test('newestMessageTime dùng fallback khi rỗng và bỏ qua dữ liệu sai', () => {
+  assert.equal(newestMessageTime([], 500), 500);
+  assert.equal(newestMessageTime(null, 500), 500);
+  assert.equal(newestMessageTime([{ createdAt: 700 }], 500), 700);
+  assert.equal(newestMessageTime([null, { createdAt: 'abc' }], null), null);
 });
