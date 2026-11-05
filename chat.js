@@ -7,7 +7,7 @@
 import { client } from './supabase-init.js';
 import {
     isPublicRoomId, unreadCount, roomLabel, directRoomId,
-    filterDirectory, sortMessagesAsc, partitionRooms, visibleMessages
+    filterDirectory, sortMessagesAsc, partitionRooms, visibleMessages, blockTimes
 } from './core.js';
 
 let currentUser = null;
@@ -28,6 +28,7 @@ let roomListUnsub = null;
 let messagesUnsub = null;
 let directoryUnsub = null;
 let readsUnsub = null;
+let blocksUnsub = null;
 
 function esc(s) {
     if (typeof window !== 'undefined' && typeof window.escapeHtml === 'function') return window.escapeHtml(s);
@@ -212,7 +213,11 @@ export async function sendMessage(roomId, text) {
         sender_name: senderName,
         body: text
     });
-    if (error) { console.warn('sendMessage:', error); return; }
+    if (error) {
+        console.warn('sendMessage:', error);
+        if (typeof window.showToast === 'function') window.showToast('Không gửi được tin nhắn (có thể do đang chặn nhau).', 'error');
+        return;
+    }
     const { error: updErr } = await client.from('rooms').update({
         last_message_text: text,
         last_message_sender: currentUser.uid,
@@ -316,6 +321,66 @@ function subscribeReads() {
     return function () { removeChannel(channel); };
 }
 
+/* ------------------------- Chặn người dùng ------------------------- */
+
+async function refreshBlocks() {
+    if (!client || !currentUser) return;
+    const { data, error } = await client.from('blocks').select('blocker, blocked, created_at');
+    if (error) { console.warn('refreshBlocks:', error); return; }
+    blockedMap = blockTimes((data || []).map(function (r) {
+        return { blocker: r.blocker, blocked: r.blocked, createdAt: Date.parse(r.created_at) };
+    }), currentUser.uid);
+    refreshChatViews();
+    setChatTitle();
+    renderPickUserList();
+    const gi = document.getElementById('groupInfoModal');
+    if (gi && !gi.classList.contains('hidden')) renderGroupInfo();
+}
+
+function subscribeBlocks() {
+    if (!client || !currentUser) return function () { };
+    const uid = currentUser.uid;
+    const channel = client.channel('blocks-' + uid)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'blocks' },
+            function () { refreshBlocks().catch(logErr); })
+        .subscribe();
+    refreshBlocks().catch(logErr);
+    return function () { removeChannel(channel); };
+}
+
+export async function blockUser(uid) {
+    if (!client || !currentUser || !uid || uid === currentUser.uid) return;
+    const { error } = await client.from('blocks').insert({ blocker: currentUser.uid, blocked: uid });
+    if (error && error.code !== '23505') {
+        console.warn('blockUser:', error);
+        if (typeof window.showToast === 'function') window.showToast('Không chặn được người này.', 'error');
+        return;
+    }
+    await refreshBlocks();
+    if (typeof window.showToast === 'function') window.showToast('Đã chặn người dùng', 'info');
+}
+
+export async function unblockUser(uid) {
+    if (!client || !currentUser || !uid) return;
+    const { error } = await client.from('blocks').delete()
+        .eq('blocker', currentUser.uid).eq('blocked', uid);
+    if (error) {
+        console.warn('unblockUser:', error);
+        if (typeof window.showToast === 'function') window.showToast('Không bỏ chặn được.', 'error');
+        return;
+    }
+    await refreshBlocks();
+    if (typeof window.showToast === 'function') window.showToast('Đã bỏ chặn', 'info');
+}
+
+function otherUidOfDirect(room) {
+    if (!room || room.type !== 'direct') return null;
+    const uid = currentUser && currentUser.uid;
+    const members = room.members || [];
+    for (let i = 0; i < members.length; i++) if (members[i] !== uid) return members[i];
+    return null;
+}
+
 /* ------------------------- Danh bạ người dùng ------------------------- */
 
 // Tương thích chữ ký cũ của main.js (phiên bản cũ). Hồ sơ công khai do
@@ -351,6 +416,10 @@ export function listDirectory(cb) {
 export async function openDirect(otherUid) {
     if (!client || !currentUser || !otherUid) return;
     if (otherUid === currentUser.uid) return;
+    if (blockedMap[otherUid]) {
+        if (typeof window.showToast === 'function') window.showToast('Không thể nhắn tin cho người này', 'error');
+        return;
+    }
     const uid = currentUser.uid;
     const roomId = directRoomId(uid, otherUid);
 
@@ -386,7 +455,9 @@ function renderPickUserList() {
     const search = document.getElementById('pickUserSearch');
     const q = search ? search.value : '';
     const uid = currentUser && currentUser.uid;
-    const list = filterDirectory(directoryUsers, q).filter(function (u) { return u.uid !== uid; });
+    const list = filterDirectory(directoryUsers, q)
+        .filter(function (u) { return u.uid !== uid; })
+        .filter(function (u) { return !blockedMap[u.uid]; });
     el.innerHTML = '';
     if (!list.length) {
         el.innerHTML = '<div class="pick-user-empty">Không tìm thấy người dùng nào.</div>';
@@ -469,7 +540,11 @@ export async function addGroupMembers(roomId, uids) {
     if (!client || !currentUser || !roomId || !uids || !uids.length) return;
     const rows = uids.map(function (m) { return { room_id: roomId, user_id: m, status: 'pending' }; });
     const { error } = await client.from('room_members').upsert(rows, { onConflict: 'room_id,user_id', ignoreDuplicates: true });
-    if (error) { console.warn('addGroupMembers:', error); return; }
+    if (error) {
+        console.warn('addGroupMembers:', error);
+        if (typeof window.showToast === 'function') window.showToast('Không thêm được thành viên (có thể do đang chặn nhau).', 'error');
+        return;
+    }
     if (typeof window.showToast === 'function') window.showToast('Đã gửi lời mời tham gia nhóm', 'info');
     if (roomListRefresh) roomListRefresh().catch(logErr);
 }
@@ -493,7 +568,11 @@ export async function acceptGroupInvite(roomId) {
         .update({ status: 'active' })
         .eq('room_id', roomId)
         .eq('user_id', currentUser.uid);
-    if (error) { console.warn('acceptGroupInvite:', error); return; }
+    if (error) {
+        console.warn('acceptGroupInvite:', error);
+        if (typeof window.showToast === 'function') window.showToast('Không thể đồng ý lời mời này (có thể do đang chặn nhau).', 'error');
+        return;
+    }
     if (roomListRefresh) await roomListRefresh().catch(logErr);
     openRoom(roomId);
 }
@@ -521,7 +600,9 @@ function renderCreateGroupList() {
     const uid = currentUser && currentUser.uid;
     const search = document.getElementById('groupSearch');
     const q = search ? search.value : '';
-    const others = directoryUsers.filter(function (u) { return u.uid !== uid; });
+    const others = directoryUsers
+        .filter(function (u) { return u.uid !== uid; })
+        .filter(function (u) { return !blockedMap[u.uid]; });
     const users = filterDirectory(others, q);
     el.innerHTML = '';
     if (!users.length) {
@@ -610,7 +691,7 @@ function renderGroupInfo() {
     if (addList && isOwner) {
         const members = (room.members || []).concat(room.pendingMembers || []);
         const candidates = directoryUsers.filter(function (u) {
-            return members.indexOf(u.uid) === -1;
+            return members.indexOf(u.uid) === -1 && !blockedMap[u.uid];
         });
         addList.innerHTML = '';
         if (!candidates.length) {
@@ -733,6 +814,7 @@ export async function initChat(user) {
     await ensurePublicRoom();
     roomListUnsub = subscribeRoomList(null);
     readsUnsub = subscribeReads();
+    blocksUnsub = subscribeBlocks();
     directoryUnsub = listDirectory(function () { renderPickUserList(); });
     openRoom('public');
 }
@@ -742,8 +824,13 @@ export function teardownChat() {
     if (messagesUnsub) { messagesUnsub(); messagesUnsub = null; }
     if (directoryUnsub) { directoryUnsub(); directoryUnsub = null; }
     if (readsUnsub) { readsUnsub(); readsUnsub = null; }
+    if (blocksUnsub) { blocksUnsub(); blocksUnsub = null; }
     unreadByRoom = {};
     lastReadMap = {};
+    clearedMap = {};
+    blockedMap = {};
+    previewByRoom = {};
+    currentMessages = [];
     currentUser = null;
     currentRoomId = null;
     roomsCache = [];
