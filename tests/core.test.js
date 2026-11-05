@@ -4,6 +4,7 @@ import {
   directRoomId, cacheKeyFor, shouldOfferUpload, filterDirectory,
   roomLabel, unreadCount, validateRegistration, isPublicRoomId,
   sortMessagesAsc, legacyCacheAllowed, partitionRooms,
+  visibleMessages, blockTimes,
   normalizeUsername, isValidUsername, isValidRecoveryCode,
   looksLikeEmail, validateSignup, profileUsername,
   GUEST_UID, isGuestUid, shouldMigrateGuest
@@ -161,4 +162,48 @@ test('shouldMigrateGuest chỉ khi đang nâng cấp và có dữ liệu khách'
   assert.equal(shouldMigrateGuest({ upgradeMode: true, hasGuestData: false }), false);
   assert.equal(shouldMigrateGuest({ upgradeMode: false, hasGuestData: true }), false);
   assert.equal(shouldMigrateGuest({}), false);
+});
+
+test('visibleMessages bỏ tin trước/đúng mốc xoá lịch sử', () => {
+  const msgs = [{ senderId: 'a', createdAt: 100 }, { senderId: 'b', createdAt: 200 }, { senderId: 'a', createdAt: 300 }];
+  assert.deepEqual(visibleMessages(msgs, { clearedAt: 200 }).map((m) => m.createdAt), [300]);
+});
+
+test('visibleMessages ẩn tin mới của người bị chặn, giữ tin trước mốc', () => {
+  const msgs = [{ senderId: 'x', createdAt: 100 }, { senderId: 'x', createdAt: 300 }, { senderId: 'y', createdAt: 300 }];
+  const r = visibleMessages(msgs, { blocked: { x: 200 }, selfUid: 'me' });
+  assert.deepEqual(r.map((m) => m.createdAt), [100, 300]);
+  assert.equal(r[1].senderId, 'y');
+});
+
+test('visibleMessages không ẩn tin của chính người xem khỏi bộ lọc chặn', () => {
+  const msgs = [{ senderId: 'me', createdAt: 300 }];
+  assert.equal(visibleMessages(msgs, { blocked: { me: 100 }, selfUid: 'me' }).length, 1);
+});
+
+test('visibleMessages chịu dữ liệu rỗng/không hợp lệ', () => {
+  assert.deepEqual(visibleMessages(null, {}), []);
+  assert.deepEqual(visibleMessages([null], {}), []);
+});
+
+test('visibleMessages trả mảng mới, không sửa mảng vào', () => {
+  const msgs = [{ senderId: 'x', createdAt: 100 }];
+  const out = visibleMessages(msgs, { clearedAt: 100 });
+  assert.equal(out.length, 0);
+  assert.equal(msgs.length, 1);
+  assert.notEqual(out, msgs);
+});
+
+test('blockTimes lấy mốc chặn sớm nhất giữa hai chiều', () => {
+  const blocks = [
+    { blocker: 'me', blocked: 'x', createdAt: 200 },
+    { blocker: 'x', blocked: 'me', createdAt: 100 },
+    { blocker: 'me', blocked: 'y', createdAt: 500 }
+  ];
+  assert.deepEqual(blockTimes(blocks, 'me'), { x: 100, y: 500 });
+});
+
+test('blockTimes bỏ qua dòng không liên quan và dữ liệu rỗng', () => {
+  assert.deepEqual(blockTimes([{ blocker: 'a', blocked: 'b', createdAt: 1 }], 'me'), {});
+  assert.deepEqual(blockTimes(null, 'me'), {});
 });

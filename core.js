@@ -120,6 +120,43 @@ export function sortMessagesAsc(messages) {
     });
 }
 
+// Lọc tin hiển thị theo mốc xoá lịch sử (clearedAt, ms) và mốc chặn theo từng
+// người gửi (blocked: uid -> ms). Không bao giờ ẩn tin của chính selfUid khỏi
+// bộ lọc chặn. Trả mảng mới.
+export function visibleMessages(messages, options) {
+    var o = options || {};
+    var list = Array.isArray(messages) ? messages : [];
+    var cleared = toMillis(o.clearedAt);
+    var blocked = o.blocked || {};
+    var selfUid = o.selfUid;
+    return list.filter(function (m) {
+        if (!m) return false;
+        var t = toMillis(m.createdAt);
+        if (cleared !== null && t !== null && t <= cleared) return false;
+        var sender = m.senderId;
+        if (sender !== selfUid && blocked[sender] != null) {
+            var bt = toMillis(blocked[sender]);
+            if (t !== null && bt !== null && t > bt) return false;
+        }
+        return true;
+    });
+}
+
+// Từ các dòng bảng blocks (createdAt là ms) suy ra mốc chặn sớm nhất theo từng
+// người còn lại. Dòng không liên quan tới selfUid bị bỏ qua.
+export function blockTimes(blocks, selfUid) {
+    var map = {};
+    (Array.isArray(blocks) ? blocks : []).forEach(function (b) {
+        if (!b) return;
+        var other = b.blocker === selfUid ? b.blocked : (b.blocked === selfUid ? b.blocker : null);
+        if (!other) return;
+        var t = toMillis(b.createdAt);
+        if (t === null) return;
+        if (map[other] == null || t < map[other]) map[other] = t;
+    });
+    return map;
+}
+
 // Chỉ được đọc cache cũ (khóa chung, chưa gắn uid) khi chưa có chủ hoặc đúng chủ.
 export function legacyCacheAllowed(localOwner, uid) {
     return localOwner === null || localOwner === undefined || localOwner === uid;
