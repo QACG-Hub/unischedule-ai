@@ -194,6 +194,7 @@ export function openRoom(roomId) {
     currentRoomId = roomId;
     unreadByRoom[roomId] = 0;
     setChatTitle();
+    updateChatMenuBtn();
     renderRoomList(roomsCache);
 
     if (messagesUnsub) { messagesUnsub(); messagesUnsub = null; }
@@ -475,6 +476,105 @@ function renderPickUserList() {
     });
 }
 
+/* ------------------------- Thao tác người dùng ------------------------- */
+
+function hideUserActions() {
+    const menu = document.getElementById('userActionMenu');
+    if (menu) { menu.classList.add('hidden'); menu.innerHTML = ''; }
+}
+
+function showUserActions(anchor, actions) {
+    const menu = document.getElementById('userActionMenu');
+    if (!menu || !anchor) return;
+    menu.innerHTML = '';
+    (actions || []).forEach(function (a) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'user-action-item' + (a.danger ? ' danger' : '');
+        b.setAttribute('role', 'menuitem');
+        b.textContent = a.label;
+        b.addEventListener('click', function () { hideUserActions(); if (a.onClick) a.onClick(); });
+        menu.appendChild(b);
+    });
+    menu.classList.remove('hidden');
+    const r = anchor.getBoundingClientRect();
+    const mw = menu.offsetWidth;
+    const mh = menu.offsetHeight;
+    let left = Math.min(r.left, window.innerWidth - mw - 8);
+    let top = r.bottom + 4;
+    if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 4);
+    menu.style.left = Math.max(8, left) + 'px';
+    menu.style.top = top + 'px';
+}
+
+function userActionsFor(uid) {
+    const name = (directoryMap[uid] || {}).displayName || 'Người dùng';
+    const actions = [];
+    if (!blockedMap[uid]) {
+        actions.push({ label: 'Nhắn tin riêng', onClick: function () {
+            if (typeof window.closeModal === 'function') window.closeModal('groupInfoModal');
+            openDirect(uid).catch(function (e) { console.warn('openDirect:', e); });
+        } });
+        actions.push({ label: 'Chặn ' + name, danger: true, onClick: function () { blockUser(uid).catch(logErr); } });
+    } else {
+        actions.push({ label: 'Bỏ chặn ' + name, onClick: function () { unblockUser(uid).catch(logErr); } });
+    }
+    return actions;
+}
+
+function renderBlockedList() {
+    const el = document.getElementById('blockedList');
+    if (!el) return;
+    el.innerHTML = '';
+    const uids = Object.keys(blockedMap);
+    if (!uids.length) {
+        el.innerHTML = '<div class="pick-user-empty">Bạn chưa chặn ai.</div>';
+        return;
+    }
+    uids.forEach(function (uid) {
+        const name = (directoryMap[uid] || {}).displayName || 'Người dùng';
+        const row = document.createElement('div');
+        row.className = 'group-member-row';
+        const span = document.createElement('span');
+        span.className = 'pick-user-name';
+        span.textContent = name;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-light btn-sm';
+        btn.textContent = 'Bỏ chặn';
+        btn.addEventListener('click', function () { unblockUser(uid).then(renderBlockedList).catch(logErr); });
+        row.appendChild(span);
+        row.appendChild(btn);
+        el.appendChild(row);
+    });
+}
+
+function updateChatMenuBtn() {
+    const btn = document.getElementById('chatMenuBtn');
+    const clear = document.getElementById('chatMenuClear');
+    const block = document.getElementById('chatMenuBlock');
+    if (!btn) return;
+    const room = currentRoom();
+    const type = room ? room.type : (isPublicRoomId(currentRoomId) ? 'public' : null);
+    const show = type === 'direct' || type === 'group';
+    btn.classList.toggle('hidden', !show);
+    if (!show) {
+        const menu = document.getElementById('chatMenu');
+        if (menu) menu.classList.add('hidden');
+        return;
+    }
+    if (clear) clear.classList.remove('hidden');
+    if (block) {
+        if (type === 'direct') {
+            const other = otherUidOfDirect(room);
+            block.classList.remove('hidden');
+            block.textContent = (other && blockedMap[other]) ? 'Bỏ chặn' : 'Chặn người này';
+        } else {
+            block.classList.add('hidden');
+        }
+    }
+}
+
 function wireChatUi() {
     const btn = document.getElementById('btnPickUser');
     if (btn && !btn.dataset.wired) {
@@ -490,6 +590,46 @@ function wireChatUi() {
     if (search && !search.dataset.wired) {
         search.dataset.wired = '1';
         search.addEventListener('input', renderPickUserList);
+    }
+
+    const menuBtn = document.getElementById('chatMenuBtn');
+    if (menuBtn && !menuBtn.dataset.wired) {
+        menuBtn.dataset.wired = '1';
+        menuBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            const menu = document.getElementById('chatMenu');
+            if (menu) menu.classList.toggle('hidden');
+        });
+    }
+    const clearBtn = document.getElementById('chatMenuClear');
+    if (clearBtn && !clearBtn.dataset.wired) {
+        clearBtn.dataset.wired = '1';
+        clearBtn.addEventListener('click', function () {
+            const menu = document.getElementById('chatMenu');
+            if (menu) menu.classList.add('hidden');
+            if (currentRoomId) clearHistory(currentRoomId).catch(logErr);
+        });
+    }
+    const blockBtn = document.getElementById('chatMenuBlock');
+    if (blockBtn && !blockBtn.dataset.wired) {
+        blockBtn.dataset.wired = '1';
+        blockBtn.addEventListener('click', function () {
+            const menu = document.getElementById('chatMenu');
+            if (menu) menu.classList.add('hidden');
+            const room = currentRoom();
+            const other = otherUidOfDirect(room);
+            if (!other) return;
+            if (blockedMap[other]) unblockUser(other).catch(logErr);
+            else blockUser(other).catch(logErr);
+        });
+    }
+    const blockedBtn = document.getElementById('blockedListBtn');
+    if (blockedBtn && !blockedBtn.dataset.wired) {
+        blockedBtn.dataset.wired = '1';
+        blockedBtn.addEventListener('click', function () {
+            renderBlockedList();
+            if (typeof window.openModal === 'function') window.openModal('blockedListModal');
+        });
     }
 }
 
@@ -650,7 +790,17 @@ function renderGroupInfo() {
             const isMe = m === uid;
             const row = document.createElement('div');
             row.className = 'group-member-row';
-            row.innerHTML = '<span class="pick-user-name">' + esc(info.displayName || 'Người dùng') + (isMe ? ' (bạn)' : '') + '</span>';
+            const nameBtn = document.createElement('button');
+            nameBtn.type = 'button';
+            nameBtn.className = 'pick-user-name member-name-btn';
+            nameBtn.textContent = (info.displayName || 'Người dùng') + (isMe ? ' (bạn)' : '');
+            row.appendChild(nameBtn);
+            if (!isMe) {
+                nameBtn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    showUserActions(nameBtn, userActionsFor(m));
+                });
+            }
             if (isOwner && !isMe) {
                 const rm = document.createElement('button');
                 rm.type = 'button';
@@ -924,6 +1074,7 @@ function renderRoomList(list) {
     });
 
     updateGroupInfoBtn();
+    updateChatMenuBtn();
     const gi = document.getElementById('groupInfoModal');
     if (gi && !gi.classList.contains('hidden')) renderGroupInfo();
 }
@@ -945,11 +1096,17 @@ function renderMessages(raw) {
         row.className = 'msg' + (m.senderId === uid ? ' mine' : '');
         row.innerHTML =
             '<div class="msg-bubble">' +
-            (m.senderId === uid ? '' : '<div class="msg-sender">' + esc(m.senderName || '') + '</div>') +
+            (m.senderId === uid ? '' : '<button type="button" class="msg-sender msg-sender-btn" data-uid="' + esc(m.senderId) + '">' + esc(m.senderName || '') + '</button>') +
             '<div class="msg-text">' + esc(m.text || '') + '</div>' +
             '<div class="msg-time">' + timeLabel(m.createdAt) + '</div>' +
             '</div>';
         el.appendChild(row);
+    });
+    el.querySelectorAll('.msg-sender-btn').forEach(function (b) {
+        b.addEventListener('click', function (e) {
+            e.stopPropagation();
+            showUserActions(b, userActionsFor(b.dataset.uid));
+        });
     });
     if (nearBottom) el.scrollTop = el.scrollHeight;
 }
@@ -966,6 +1123,18 @@ function setChatTitle() {
 /* ------------------------- Gắn form gửi tin ------------------------- */
 
 if (typeof document !== 'undefined') {
+    document.addEventListener('click', function () {
+        hideUserActions();
+        const m = document.getElementById('chatMenu');
+        if (m) m.classList.add('hidden');
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            hideUserActions();
+            const m = document.getElementById('chatMenu');
+            if (m) m.classList.add('hidden');
+        }
+    });
     document.addEventListener('submit', function (e) {
         if (e.target && e.target.id === 'messageForm') {
             e.preventDefault();

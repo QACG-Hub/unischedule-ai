@@ -746,3 +746,36 @@ textarea { resize: vertical; }
 }
 .group-member-row:last-child { border-bottom: none; }
 .group-member-row .pick-user-name { font-size: 13.5px; }
+
+/* ---------- Menu tuỳ chọn chat + thao tác người dùng ---------- */
+.chat-pane-head { position: relative; }
+.chat-pane-actions { position: relative; display: flex; align-items: center; gap: 8px; }
+.chat-menu {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 30;
+    min-width: 200px; padding: 4px;
+    background: #fff; border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow);
+}
+.chat-menu-item {
+    display: block; width: 100%; text-align: left;
+    background: none; border: none; font: inherit; font-size: 13px;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer; color: var(--text);
+}
+.chat-menu-item:hover { background: var(--soft); }
+.chat-menu-item.danger { color: var(--red); }
+.user-action-menu {
+    position: fixed; z-index: 60; min-width: 170px; padding: 4px;
+    background: #fff; border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow);
+}
+.user-action-item {
+    display: block; width: 100%; text-align: left;
+    background: none; border: none; font: inherit; font-size: 13px;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer; color: var(--text);
+}
+.user-action-item:hover { background: var(--soft); }
+.user-action-item.danger { color: var(--red); }
+.msg-sender-btn { background: none; border: none; padding: 0; font: inherit; cursor: pointer; }
+.msg-sender-btn:hover { text-decoration: underline; }
+.member-name-btn { background: none; border: none; padding: 0; font: inherit; cursor: pointer; text-align: left; }
+.member-name-btn:hover { text-decoration: underline; }
