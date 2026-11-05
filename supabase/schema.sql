@@ -45,8 +45,24 @@ create table if not exists public.rooms (
 create table if not exists public.room_members (
     room_id text not null references public.rooms(id) on delete cascade,
     user_id uuid not null references auth.users(id) on delete cascade,
+    -- 'active' = đã là thành viên; 'pending' = đang chờ đồng ý lời mời vào nhóm.
+    status text not null default 'active',
     primary key (room_id, user_id)
 );
+
+-- Thêm cột status cho database đã tạo trước đó (idempotent).
+alter table public.room_members
+    add column if not exists status text not null default 'active';
+
+do $$
+begin
+    if not exists (
+        select 1 from pg_constraint where conname = 'room_members_status_check'
+    ) then
+        alter table public.room_members
+            add constraint room_members_status_check check (status in ('active', 'pending'));
+    end if;
+end $$;
 
 create table if not exists public.messages (
     id uuid primary key default gen_random_uuid(),
@@ -92,11 +108,11 @@ stable
 as $$
     select exists (
         select 1 from public.room_members
-        where room_id = p_room_id and user_id = auth.uid()
+        where room_id = p_room_id and user_id = auth.uid() and status = 'active'
     );
 $$;
 
--- Đọc được phòng không: phòng chung, hoặc là thành viên.
+-- Đọc được phòng không: phòng chung, hoặc là thành viên đã đồng ý.
 create or replace function public.can_read_room(p_room_id text)
 returns boolean
 language sql
@@ -111,9 +127,23 @@ as $$
                 r.type = 'public'
                 or exists (
                     select 1 from public.room_members m
-                    where m.room_id = p_room_id and m.user_id = auth.uid()
+                    where m.room_id = p_room_id and m.user_id = auth.uid() and m.status = 'active'
                 )
               )
+    );
+$$;
+
+-- Mình có đang được mời (pending) vào phòng không.
+create or replace function public.is_invited(p_room_id text)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+    select exists (
+        select 1 from public.room_members
+        where room_id = p_room_id and user_id = auth.uid() and status = 'pending'
     );
 $$;
 
@@ -178,6 +208,7 @@ $$;
 
 grant execute on function public.is_room_member(text) to authenticated;
 grant execute on function public.can_read_room(text) to authenticated;
+grant execute on function public.is_invited(text) to authenticated;
 grant execute on function public.owns_room(text) to authenticated;
 grant execute on function public.is_username_available(text) to anon, authenticated;
 
@@ -228,6 +259,26 @@ create trigger trg_guard_room_update
     before update on public.rooms
     for each row execute function public.guard_room_update();
 
+-- Không cho đổi phòng/người của một dòng thành viên khi update (chỉ đổi status).
+create or replace function public.guard_room_member_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+    if new.room_id <> old.room_id or new.user_id <> old.user_id then
+        raise exception 'Không được đổi phòng/người của thành viên';
+    end if;
+    return new;
+end;
+$$;
+
+drop trigger if exists trg_guard_room_member_update on public.room_members;
+create trigger trg_guard_room_member_update
+    before update on public.room_members
+    for each row execute function public.guard_room_member_update();
+
 -- ---------------------------------------------------------------------------
 -- Bật Row Level Security
 -- ---------------------------------------------------------------------------
@@ -239,6 +290,20 @@ alter table public.rooms          enable row level security;
 alter table public.room_members   enable row level security;
 alter table public.messages       enable row level security;
 alter table public.reads          enable row level security;
+
+-- Xoá MỌI policy cũ trên các bảng liên quan để migration tự lành, kể cả
+-- policy lỗi thời/đặt tên lạ còn sót lại trên database đã cấu hình trước đó.
+do $$
+declare r record;
+begin
+    for r in
+        select policyname, tablename from pg_policies
+        where schemaname = 'public'
+          and tablename in ('profiles','recovery_codes','subjects','rooms','room_members','messages','reads')
+    loop
+        execute format('drop policy if exists %I on public.%I', r.policyname, r.tablename);
+    end loop;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- Policy
@@ -270,7 +335,7 @@ create policy subjects_all on public.subjects
 drop policy if exists rooms_select on public.rooms;
 create policy rooms_select on public.rooms
     for select to authenticated
-    using (type = 'public' or public.is_room_member(id));
+    using (type = 'public' or public.is_room_member(id) or public.is_invited(id));
 
 drop policy if exists rooms_insert on public.rooms;
 create policy rooms_insert on public.rooms
@@ -295,12 +360,19 @@ create policy rooms_delete on public.rooms
 drop policy if exists room_members_select on public.room_members;
 create policy room_members_select on public.room_members
     for select to authenticated
-    using (public.can_read_room(room_id));
+    using (public.can_read_room(room_id) or user_id = auth.uid() or public.owns_room(room_id));
 
 drop policy if exists room_members_insert on public.room_members;
 create policy room_members_insert on public.room_members
     for insert to authenticated
-    with check (public.owns_room(room_id));
+    with check (public.owns_room(room_id) and status in ('active', 'pending'));
+
+-- Người được mời tự chuyển dòng của mình sang 'active'; chủ phòng cũng đổi được.
+drop policy if exists room_members_update on public.room_members;
+create policy room_members_update on public.room_members
+    for update to authenticated
+    using (user_id = auth.uid() or public.owns_room(room_id))
+    with check (user_id = auth.uid() or public.owns_room(room_id));
 
 drop policy if exists room_members_delete on public.room_members;
 create policy room_members_delete on public.room_members
