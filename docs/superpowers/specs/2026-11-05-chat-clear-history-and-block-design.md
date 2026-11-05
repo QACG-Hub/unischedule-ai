@@ -151,7 +151,11 @@ Ghi chú: `rooms_insert` **không** đổi (lúc tạo phòng chưa biết thàn
   - "Xoá lịch sử trò chuyện"
   - "Chặn người này" (chỉ direct)
 - **Kênh chat chung** (và mọi phòng): bấm vào **tên người gửi** trong một tin nhắn → menu nhỏ có "Chặn &lt;tên&gt;". Đây là chỗ chặn từ kênh chung (không cần nút "⋮" ở đây).
-- `#groupInfoModal`: mỗi thành viên (khác mình) có nút "Chặn".
+- `#groupInfoModal` (modal "Thông tin nhóm" đã có sẵn danh sách thành viên `#groupMemberListInfo`): **bấm vào tên một thành viên (khác mình)** → menu nhỏ có:
+  - "Nhắn tin riêng" → đóng modal, gọi `openDirect(uid)` (ẩn nếu hai người đang chặn nhau).
+  - "Chặn &lt;tên&gt;" / "Bỏ chặn" tuỳ trạng thái.
+  - Chủ nhóm vẫn giữ nút xoá thành viên cạnh mỗi tên như hiện tại.
+  - Bấm vào tên chính mình ("(bạn)") không làm gì.
 - `#pickUserModal` + danh sách thêm thành viên: ẩn người đã chặn.
 - `#userMenu`: thêm nút "Danh sách đã chặn" → modal mới `#blockedListModal`.
 - `style.css`: thêm `.chat-menu*`, `.blocked-*`, `.msg-sender-btn` (theo biến CSS hiện có, hỗ trợ màn hình nhỏ).
@@ -179,6 +183,7 @@ Ghi chú: `rooms_insert` **không** đổi (lúc tạo phòng chưa biết thàn
 9. Bỏ chặn rồi chặn lại: mốc chặn tính lại từ lần chặn mới (mốc cũ đã xoá cùng lúc bỏ chặn).
 10. Lời mời đang chờ: `room_members_update` kiểm tra chặn — nếu người nhận lời mời và chủ phòng đang chặn nhau thì việc "Đồng ý" bị từ chối.
 11. Mốc "xoá lịch sử" dùng giờ máy khách (giống `last_read_at` hiện tại). Không bao giờ ẩn tin của chính người đang xem (kể cả khi đồng hồ máy lệch).
+12. Danh sách thành viên nhóm (đã có trong "Thông tin nhóm") được nâng cấp: bấm tên thành viên → "Nhắn tin riêng" (dùng lại `openDirect`) hoặc "Chặn"/"Bỏ chặn"; không hiện "Nhắn tin riêng" nếu hai người đang chặn nhau.
 
 ## Kiểm chứng dự kiến
 
@@ -188,6 +193,7 @@ Ghi chú: `rooms_insert` **không** đổi (lúc tạo phòng chưa biết thàn
   - A chặn B: A gửi DM → 403; B gửi DM → 403; B thêm A vào nhóm → 403 (và ngược lại); B "Đồng ý" lời mời cũ của A → 403.
   - A xoá lịch sử phòng nhóm: B vẫn đọc được tin cũ; A (qua `cleared_at`) coi như sạch.
   - A bỏ chặn → gửi DM lại được; chặn lại → mốc mới.
+  - Trong "Thông tin nhóm": bấm tên thành viên B → "Nhắn tin riêng" mở đúng phòng `dm_...`; sau khi A chặn B thì mục "Nhắn tin riêng" biến mất.
 - `node --test tests/*.test.js` xanh.
 
 ## Còn để người xây quyết
