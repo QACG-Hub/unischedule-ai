@@ -1,7 +1,7 @@
 # Thiết kế: Xoá lịch sử trò chuyện (cho riêng mình) + Chặn người dùng
 
 **Ngày:** 2026-11-05
-**Trạng thái:** đã duyệt; code đã triển khai (chờ chạy `supabase/schema.sql` để kiểm chứng RLS)
+**Trạng thái:** đã duyệt, đã triển khai và kiểm chứng (44 unit test + 16 kiểm chứng RLS trên Supabase thật đều PASS)
 **Phương án đã chọn:** Cách 1 — chặn hành động ở server (RLS), ẩn tin ở client.
 
 ## Vấn đề / yêu cầu
