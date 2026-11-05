@@ -8,7 +8,7 @@ import { client } from './supabase-init.js';
 import {
     isPublicRoomId, unreadCount, roomLabel, directRoomId,
     filterDirectory, sortMessagesAsc, partitionRooms, visibleMessages, blockTimes,
-    blockedByMe, newestMessageTime
+    blockedByMe, newestMessageTime, isRoomHidden
 } from './core.js';
 
 let currentUser = null;
@@ -271,6 +271,16 @@ export async function clearHistory(roomId) {
         return;
     }
     clearedMap[roomId] = mark;
+    // Phòng đang mở mà bị ẩn thì đóng khung, đưa về "Chọn một phòng".
+    if (roomId === currentRoomId) {
+        currentRoomId = null;
+        currentMessages = [];
+        if (messagesUnsub) { messagesUnsub(); messagesUnsub = null; }
+        const ml = document.getElementById('messageList');
+        if (ml) ml.innerHTML = '';
+        setChatTitle();
+        updateChatMenuBtn();
+    }
     refreshChatViews();
     if (roomListRefresh) roomListRefresh().catch(logErr);
     if (typeof window.showToast === 'function') window.showToast('Đã xoá lịch sử trò chuyện', 'info');
@@ -1101,7 +1111,9 @@ function renderRoomList(list) {
         if (previewByRoom[room.id] !== undefined) return previewByRoom[room.id];
         return room.lastMessage;
     };
-    const activeSorted = split.active.slice().sort(function (a, b) {
+    const activeSorted = split.active.filter(function (room) {
+        return !isRoomHidden(room, clearedMap[room.id] == null ? null : clearedMap[room.id], previewAt(room));
+    }).sort(function (a, b) {
         const pa = previewAt(a);
         const pb = previewAt(b);
         return ((pb && pb.createdAt) || 0) - ((pa && pa.createdAt) || 0);
