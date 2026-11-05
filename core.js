@@ -63,6 +63,19 @@ export function roomLabel(room, uid, directoryMap) {
     return (profile && profile.displayName) || 'Trò chuyện riêng';
 }
 
+// Tách danh sách phòng: lời mời đang chờ (myStatus='pending') và phòng đã tham gia.
+// Phòng thiếu myStatus coi như đang tham gia.
+export function partitionRooms(rooms, uid) {
+    var invites = [];
+    var active = [];
+    (Array.isArray(rooms) ? rooms : []).forEach(function (room) {
+        if (!room) return;
+        if (room.myStatus === 'pending') invites.push(room);
+        else active.push(room);
+    });
+    return { invites: invites, active: active };
+}
+
 // Đếm số tin chưa đọc so với mốc đã đọc (hỗ trợ Firestore Timestamp hoặc số).
 function toMillis(value) {
     if (value == null) return null;

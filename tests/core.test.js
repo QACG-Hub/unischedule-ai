@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   directRoomId, cacheKeyFor, shouldOfferUpload, filterDirectory,
   roomLabel, unreadCount, validateRegistration, isPublicRoomId,
-  sortMessagesAsc, legacyCacheAllowed,
+  sortMessagesAsc, legacyCacheAllowed, partitionRooms,
   normalizeUsername, isValidUsername, isValidRecoveryCode,
   looksLikeEmail, validateSignup, profileUsername,
   GUEST_UID, isGuestUid, shouldMigrateGuest
@@ -30,6 +30,22 @@ test('filterDirectory tìm theo tên, không phân biệt hoa thường, rỗng 
   const users = [{ displayName: 'An' }, { displayName: 'Bình' }];
   assert.equal(filterDirectory(users, '').length, 2);
   assert.deepEqual(filterDirectory(users, 'bì'), [{ displayName: 'Bình' }]);
+});
+
+test('partitionRooms tách lời mời pending khỏi phòng đang tham gia', () => {
+  const rooms = [
+    { id: 'g1', myStatus: 'pending' },
+    { id: 'g2', myStatus: 'active' },
+    { id: 'pub' }
+  ];
+  const r = partitionRooms(rooms, 'u1');
+  assert.deepEqual(r.invites.map((x) => x.id), ['g1']);
+  assert.deepEqual(r.active.map((x) => x.id), ['g2', 'pub']);
+});
+
+test('partitionRooms chịu được dữ liệu rỗng/không hợp lệ', () => {
+  assert.deepEqual(partitionRooms(null, 'u1'), { invites: [], active: [] });
+  assert.deepEqual(partitionRooms([null], 'u1'), { invites: [], active: [] });
 });
 
 test('roomLabel phân biệt loại phòng', () => {
