@@ -1,5 +1,12 @@
+# Phụ thuộc
 node_modules/
+
+# Biến môi trường / bí mật cục bộ
+.env
+.env.*
+!.env.example
+
+# Hệ điều hành / trình soạn thảo
 .DS_Store
-.superpowers/
-.vercel
-.l2s.*
+Thumbs.db
+*.log
